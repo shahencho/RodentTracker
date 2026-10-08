@@ -1,0 +1,31 @@
+# Python
+.venv/
+.venv-dlc/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+.env*
+!.env.example
+
+# Videos, datasets and results (large; lab videos are not ours to publish)
+data/*
+!data/README.md
+outputs/*
+!outputs/.gitkeep
+*.mp4
+*.avi
+
+# Model weights downloaded by ultralytics
+*.pt
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Third-party model downloads
+models/third_party/
+.venv-dlc/
