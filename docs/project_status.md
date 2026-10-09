@@ -22,10 +22,8 @@
   - YOLOE (an open-vocabulary detector), given 4 example boxes, produced the training labels automatically.
   - A small public mouse model (KUNIN YOLO11n) was fine-tuned on those labels.
   - Each new lab setup needs a one-time adaptation of a few CPU hours, again with no hand labelling.
-- **Focus now:** a demo that reproduces third-party reference results. Licensing is deferred until we go to market.
-- **Main open decisions** (details in section 5):
-  1. The YSMU arena size and the lab's exact metric definitions.
-  2. What to build next: plus maze, PDF report or UI.
+- **Focus now:** a simple demo UI on a PC (no GPU) for one mouse in the open field, modelled on ANY-maze and using the DLCAnalyzer-validated metric rules. Licensing is deferred until we go to market. All decisions are in section 5; the build steps are in section 7.
+- **Waiting on YSMU:** which other tests they record, and the format of their reference scores (section 6).
 
 ---
 
@@ -61,7 +59,7 @@ Source: [detect_mouse/Lab_Rodent_Behavior_Handoff.md](../detect_mouse/Lab_Rodent
 ### 2.1 Set up the project
 - Created the repo `C:\Dev_projects\RodentTracker`, separate from Shoplifting but reusing its patterns: its own `.venv` (Python 3.13, ultralytics 8.4, CPU-only PyTorch), `config.yaml`, and `src/`, `scripts/` and `experiments/` folders.
 - DeepLabCut was installed in a separate venv for the model tests only; it has since been deleted.
-- Git history: setup and detector work in `e2ef79a`; stage 1 and validation in the next commit.
+- Git history: setup and detector work in `e2ef79a`; stage 1 and validation in `967c442`.
 
 ### 2.2 Looked at the YSMU sample (`cntrol60_cage22_an1/an2_OF1.mp4`)
 - 640×480 grayscale, 19.35 fps (an1) and 24.95 fps (an2), about 5 minutes each.
@@ -162,26 +160,151 @@ Data, outputs and weights are gitignored.
 
 ---
 
-## 5. Questions to answer before moving forward
+## 5. Decisions log
+
+Every question raised so far, with the answer given (8–9 October 2026).
 
 ### A. YSMU data and lab protocol
-1. **What is the real inner floor size of the YSMU arena (cm)?** All YSMU distances and speeds scale directly with it.
-2. **Are the floor corners right?** Please confirm them or click them with `scripts/calibrate.py`. Is the camera fixed between sessions, so one calibration covers all videos from that cage?
-3. **How does the lab define the centre zone?** For example, the central 50% of the side (our default, same as DLCAnalyzer) or a fixed size in cm.
-4. **Which analysis window?** For example, the full 5 minutes after the mouse is placed, or the first N minutes. Should the start be automatic (after the hand leaves, as now) or set by hand?
-5. **Which metric definitions should we match?** DLCAnalyzer's (validated), the lab's current manual scoring, or ANY-maze's? This decides the default movement threshold and the zone-entry rule.
-6. Can YSMU provide a few videos with **their own manual or ANY-maze scores**, for an independent check on their setup?
+| # | Question | Decision |
+|---|---|---|
+| A1 | Real inner floor size of the YSMU arena? | Use **40 × 40 cm** as the default; editable in the UI |
+| A2 | Are the floor corners right? | Confirm them **in the UI** (not with `calibrate.py`). Corners come from the last saved setup for that camera and can be dragged. The UI must say clearly where the corners came from |
+| A3 | How is the centre zone defined? | The UI shows the centre zone used and lets the user adjust it, because the YSMU camera is off-centre and tilted. **Default 50% of the arena side**; can also be set in cm from the walls, plus **ANY-maze-style click-to-toggle grid squares** |
+| A4 | Analysis window? | **Start** when the hand has left and the mouse is in the arena. **End** when the hand returns or the video ends; recordings longer than 5 minutes are analysed to the end. Both times are auto-detected **and editable in the UI** |
+| A5 | Which metric definitions? | **DLCAnalyzer's are the default** (they're what we validated against). No YSMU reference data exists yet to compare against |
+| A6 | Can YSMU provide their own scores? | Expected soon; format not yet known |
 
 ### B. Product and scope
-7. **What next:** plus maze (the other v1 test), the PDF validation report, or the upload-and-click UI?
-8. Which **outputs** does the lab need: CSV only, PDF per animal, per-group summaries, heat maps?
-9. **Where does it run:** a desktop app on the lab PC, a local web page, or a hosted service? Is ~1× real-time CPU speed acceptable, or do we need GPU or cloud options?
-10. **How should setting up a new lab work?** Today a new setup needs auto-labelling and fine-tuning, a few CPU hours, which we run. Do we offer that as a service, or try to build a general model (more labs' data in training) so most labs need no setup?
+| # | Question | Decision |
+|---|---|---|
+| B7 | What to build next? | A **simple UI** showing what we do, with the YSMU results. Very simple; show the most important outputs; anything not covered comes later |
+| B8 | Which outputs? | **CSV and PDF per animal.** All outputs are wanted (heat maps etc.); anything complicated can move to the next phase |
+| B9 | Where does it run? | **PC only, no GPU.** A local web page that opens in the browser |
+| B10 | How does a new lab get set up? | For now, a few CPU hours of auto-labelling and fine-tuning per setup. A general model is deferred |
+| – | Per-group summaries / several animals? | Too complicated for now: **one animal per video.** Design the code so groups can be added later |
+| – | UI language? | **English only** |
+| – | Validation report: PDF or UI page? | A **read-only UI page** (the Sturman comparison) |
+| – | Demo scope? | Open field only, very simple UI, the most important outputs |
 
 ### C. Licensing and business — *deferred*
-Decided 9 Oct: licensing (Ultralytics AGPL) and hardware advice wait until we go to the real market. **Current focus: a demo that reproduces the third-party reference results** (DLCAnalyzer and other published answer keys).
+| # | Question | Decision |
+|---|---|---|
+| C11 | Ultralytics AGPL route? | Deferred until we go to market; keep using the current stack |
+| C12 | Hardware (IR kit)? | No hardware. Work with whatever YSMU records, and state clearly which of their tests we can't produce |
 
 ### D. Housekeeping — *done 9 Oct*
-- Stage 1 code, validation scripts and this document are committed.
-- The other session's manual box-review scripts were removed; the pipeline doesn't use them, and they can be recovered from commit `e2ef79a`.
-- `.venv-dlc` (DeepLabCut) was deleted.
+| # | Question | Decision |
+|---|---|---|
+| D13 | Commit stage 1? | Done (`967c442`) |
+| D14 | Scripts from another session? | Not needed by the pipeline, so removed (recoverable from `e2ef79a`) |
+| D15 | Delete the DeepLabCut venv? | Deleted |
+
+### E. UI design (after the ANY-maze research)
+| Question | Decision |
+|---|---|
+| How to define the centre zone | Default **50% of side**; or **cm from walls**; plus **click grid squares** to add or remove them |
+| Corner zones | **Yes** (DLCAnalyzer definition: a square 20% of the side in each corner) |
+| Line crossings | **Yes** (the mouse's centre moves from one grid square to another) |
+| Immobility | **Yes, now:** not moving (DLCAnalyzer rule) for at least 2 s |
+| Grid size | **10 cm default**, user-adjustable |
+| Corner auto-detection | Corners come **from the previous saved setup**; the UI states this clearly |
+| Video input | Pick from a folder list on the PC, plus an Upload button |
+| Validation page | Read-only, from the results we already have |
+| Zone entry point | The animal's **centre** (the same as ANY-maze's common setting and DLCAnalyzer) |
+
+---
+
+## 6. Still open
+
+1. **YSMU's other tests:** which tests do they record besides open field (plus maze, Y-maze, forced swim, novel object…)? With sample videos we can say what we can and can't produce.
+2. **YSMU reference data:** format (ANY-maze export, Excel of manual scores…) and which videos.
+3. **Later phases:** groups and multiple animals, other tests, head and pose points (head entries, freezing, rearing), a general model, licensing.
+
+---
+
+## 7. Next stage: demo UI (open field, one mouse)
+
+### 7.1 How ANY-maze does it (what we copy)
+- **Setup:**
+  - a background frame from the video;
+  - a ruler line for scale;
+  - the arena outline drawn on the frame;
+  - a square grid at N cm;
+  - zones made by **selecting grid squares**.
+- **Typical zones:** centre, wall (thigmotaxis) and corners. ANY-maze doesn't fix a default centre size ("some researchers minimise it, while others define it as half of the overall test arena").
+- **Zone entry rule:** the animal's centre, head, or a % of its body.
+- **Start and end:** auto-start when the operator leaves the camera's view; end after a set duration or on an event.
+- **Re-analysis:** zones can be changed before, during or after tests, and results recalculate.
+- **Open-field measures:**
+  - whole test: test duration, total distance, average and maximum speed, time mobile and immobile, immobile episodes, line crossings, % frames tracked;
+  - per zone: time, %, entries, exits, latency to first entry, distance in zone, visit durations;
+  - across time: any measure per time bin;
+  - pictures: track plot and heat map;
+  - export: CSV.
+- **Calculation details:** distance uses "adaptive smoothing" scaled to the animal's size; maximum speed is measured over a minimum distance. Their exact algorithms aren't published, so we use the validated DLCAnalyzer rules instead.
+
+Sources:
+- [Setting up apparatus](https://www.any-maze.com/features/setting-up-apparatus/)
+- [Running tests](https://www.any-maze.com/features/running-tests/)
+- [Open field](https://www.any-maze.com/applications/open-field/)
+- [Measures (PDF)](https://www.any-maze.com/wp-content/uploads/2023/01/a-detailed-description-of-the-any-maze-measures.pdf)
+- [Open-field protocol using ANY-maze (protocols.io)](https://www.protocols.io/view/open-field-locomotion-test-cuy6wxze.html)
+
+### 7.2 Screens
+How it runs: a local web page started with `run_ui.bat`. A small Python server (FastAPI) reuses `src/`, and one plain HTML/JavaScript page draws on a canvas. No framework and no internet.
+
+1. **Setup**
+   - Pick a video (folder list or Upload).
+   - A video frame with **4 draggable floor corners** and a notice saying where they came from, e.g. "copied from saved setup of <video> — drag to adjust" or "no saved setup — default corners".
+   - Arena size (40 × 40 cm), grid (10 cm), centre zone (50% / cm from walls, click squares to toggle, "Reset to default"), corner zones on/off.
+   - A timeline with auto start and end that can be edited.
+   - "Run analysis" with a progress bar. The detector runs once per video; any later change recalculates instantly.
+2. **Results**
+   - Whole-test table, zone table (centre / wall / corners), track plot, heat map, per-minute chart.
+   - Download **CSV** and a **2-page PDF**:
+     - page 1: video, date, settings used and tables;
+     - page 2: plots.
+3. **Validation**
+   - The method paragraph, the 14 Sturman videos (ours next to DLCAnalyzer's), scatter plots, and the average and worst differences.
+
+### 7.3 Calculation rules
+| Item | Rule |
+|---|---|
+| Position and zone entry | The centre of the mouse's box |
+| Distance and speed | DLCAnalyzer rules (validated). Moving = faster than 5 cm/s, smoothed over ±5 frames |
+| Immobility | Not moving for at least 2 s: time immobile and number of episodes |
+| Centre zone | 50% of the side (default), or N cm from the walls, plus toggled grid squares |
+| Wall zone | The arena minus the centre |
+| Corner zones | A square 20% of the side wide in each corner (DLCAnalyzer) |
+| Line crossings | The mouse's centre moves from one grid square to another (10 cm default) |
+| Max speed | Measured over at least 2 cm of movement |
+| Timing | Auto start (hand gone, mouse present) and auto end (hand returns or the video ends), both editable |
+
+### 7.4 Step-by-step
+0. **Update this document** with all decisions and the plan. *Done.*
+1. **Metrics engine.**
+   - Move the DLCAnalyzer rules into `src/metrics.py` as the default.
+   - Add `src/zones.py` (centre / wall / corners as floor-plane masks, toggled grid squares, line crossings).
+   - Add immobility episodes, max speed over at least 2 cm, and per-zone measures.
+   - Add `auto_end_s()` in `src/tracking.py`.
+   - Re-score the 14 Sturman videos from the cached tracks; the numbers must stay identical.
+2. **Backend (`app/server.py`):**
+   - list and upload videos;
+   - serve frames;
+   - save and load the setup per video, with the corner source rule (this video → last saved setup from the same camera → default);
+   - run the detector in the background with progress;
+   - instant re-analysis;
+   - CSV and PDF export;
+   - validation data.
+3. **Setup screen:** draggable corners, the perspective grid, centre and corner zones, click-to-toggle squares, the corner-source notice, and timeline start and end.
+4. **Results screen and exports:** tables, track plot, heat map and per-minute chart (`src/report.py`, matplotlib), CSV, and the 2-page PDF.
+5. **Validation screen.**
+6. **Launcher and docs:** `run_ui.bat`, README section, update this document, commit.
+
+**Checks after each step:**
+- the Sturman numbers are unchanged;
+- YSMU an1 and an2 run end to end (an2 auto start ≈ 14.9 s);
+- changing a zone updates results instantly;
+- the CSV and PDF open.
+
+Browser automation isn't connected, so the user checks the screens visually after each step.
