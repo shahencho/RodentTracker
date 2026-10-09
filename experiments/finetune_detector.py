@@ -1,112 +1,99 @@
-"""Fine-tune a YOLO11n mouse detector from the KUNIN mouse-pose backbone on YOLOE auto-labels.
+"""Fine-tune a YOLO11n mouse detector from the KUNIN mouse-pose backbone on auto-labels (YOLOE + bg-sub fills).
 
-Split by time: the last 30% of each video is validation (frames are near-duplicates of
-their neighbours, so a random split would leak). Frames flagged as a jump are left out.
-Then scores the model on the 120 probe frames of each video against the background-
-subtraction reference, separately for the held-out part.
+Each source video has its own calibration; training images are cropped exactly like the tracker crops at
+run time (Calibration.crop_box), so the mouse appears at the same scale in training and use.
+Split by time inside each video: the last 30% is validation (neighbouring frames are near-duplicates, so a
+random split would leak). Sturman videos not listed here are never seen and are the test set.
 
-Usage: .venv\\Scripts\\python experiments\\finetune_detector.py
+Usage: .venv\\Scripts\\python experiments\\finetune_detector.py [--name mouse_det_v2]
 """
+import argparse
 import csv
-import glob
 import os
 import shutil
 import sys
-import time
 
 import cv2
 from ultralytics import YOLO
 
 sys.path.insert(0, os.path.dirname(__file__))
-from probe_common import ARENA, hand_in_view, median_background, reference_positions, sample_frames, score  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from probe_common import hand_in_view, median_background  # noqa: E402
+from src.calibration import Calibration  # noqa: E402
 
 LABELS = os.path.join("data", "labels", "yoloe")
-DATASET = os.path.join("data", "datasets", "ysmu_yoloe")
 VAL_FRACTION = 0.3
 KUNIN = "models/third_party/kunin/models/kunin-mice-pose.v0.1.5n.pt"
-VIDEOS = sorted(glob.glob(os.path.join("data", "ysmu", "*.mp4")))
-PAD = 10  # px kept around the arena so a mouse rearing on the wall is not cut off
-IMGSZ = 352  # arena crop is ~360 px, so the mouse stays at native resolution (3x faster than 640 on CPU)
+IMGSZ = 352
+# (video, calibration, check for the experimenter's hand)
+SOURCES = [
+    ("data/ysmu/cntrol60_cage22_an1_OF1.mp4", "calib/ysmu_cage22.json", True),
+    ("data/ysmu/cntrol60_cage22_an2_OF1.mp4", "calib/ysmu_cage22.json", True),
+] + [(f"data/sturman/oft/{v}.mp4", f"calib/sturman/{v}.json", False)
+     for v in ["OFT_5", "OFT_44", "OFT_6", "OFT_12", "OFT_23", "OFT_16"]]
 
 
-def crop_box():
-    x1, y1, x2, y2 = ARENA
-    return x1 - PAD, y1 - PAD, x2 + PAD, y2 + PAD
+def label_frames(name):
+    with open(os.path.join(LABELS, name, "detections.csv")) as fh:
+        keep = [int(r["frame"]) for r in csv.DictReader(fh) if r["flag"] in ("", "jump")]
+    fills = os.path.join(LABELS, name, "fills.csv")
+    if os.path.exists(fills):  # YOLOE misses filled from background subtraction
+        with open(fills) as fh:
+            keep += [int(r["frame"]) for r in csv.DictReader(fh) if r["source"] == "bgsub"]
+    return sorted(keep)
 
 
-def crop(frame):
-    x1, y1, x2, y2 = crop_box()
-    return frame[y1:y2, x1:x2]
-
-
-def build_dataset():
-    shutil.rmtree(DATASET, ignore_errors=True)
-    counts = {"train": 0, "val": 0, "hand_skipped": 0}
-    for video in VIDEOS:
+def build_dataset(dataset):
+    shutil.rmtree(dataset, ignore_errors=True)
+    for kind in ("images", "labels"):
+        for split in ("train", "val"):
+            os.makedirs(os.path.join(dataset, kind, split))
+    counts = {}
+    for video, calib_path, check_hand in SOURCES:
         name = os.path.splitext(os.path.basename(video))[0]
-        total = int(cv2.VideoCapture(video).get(cv2.CAP_PROP_FRAME_COUNT))
-        with open(os.path.join(LABELS, name, "detections.csv")) as fh:
-            keep = [int(r["frame"]) for r in csv.DictReader(fh) if r["flag"] in ("", "jump")]  # jumps checked: fast moves
-        fills = os.path.join(LABELS, name, "fills.csv")
-        if os.path.exists(fills):  # YOLOE misses filled from background subtraction
-            with open(fills) as fh:
-                keep += [int(r["frame"]) for r in csv.DictReader(fh) if r["source"] == "bgsub"]
-        bg = median_background(video)
-        for idx in sorted(keep):
+        cap = cv2.VideoCapture(video)
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        shape = (int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+        calib = Calibration.load(calib_path)
+        ox, oy, ox2, oy2 = calib.crop_box(shape)
+        cw, ch = ox2 - ox, oy2 - oy
+        bg = median_background(video) if check_hand else None
+        c = counts.setdefault(name, {"train": 0, "val": 0, "skipped": 0})
+        for idx in label_frames(name):
             stem = f"{name}_{idx:06d}"
-            if hand_in_view(cv2.imread(os.path.join(LABELS, name, "images", stem + ".jpg")), bg):
-                counts["hand_skipped"] += 1  # mouse being placed or picked up: not what we track
-                continue
-            split = "val" if idx >= (1 - VAL_FRACTION) * total else "train"
             img = cv2.imread(os.path.join(LABELS, name, "images", stem + ".jpg"))
             h, w = img.shape[:2]
             _, cx, cy, bw, bh = map(float, open(os.path.join(LABELS, name, "labels", stem + ".txt")).read().split())
-            ox, oy, ox2, oy2 = crop_box()
-            cw, ch = ox2 - ox, oy2 - oy
-            for kind in ("images", "labels"):
-                os.makedirs(os.path.join(DATASET, kind, split), exist_ok=True)
-            cv2.imwrite(os.path.join(DATASET, "images", split, stem + ".jpg"), crop(img))
-            with open(os.path.join(DATASET, "labels", split, stem + ".txt"), "w") as fh:
-                fh.write(f"0 {(cx * w - ox) / cw:.6f} {(cy * h - oy) / ch:.6f} {bw * w / cw:.6f} {bh * h / ch:.6f}\n")
-            counts[split] += 1
-    with open(os.path.join(DATASET, "data.yaml"), "w") as fh:
-        fh.write(f"path: {os.path.abspath(DATASET)}\ntrain: images/train\nval: images/val\nnames:\n  0: mouse\n")
-    print("dataset:", counts, flush=True)
-    return os.path.join(DATASET, "data.yaml")
-
-
-def detect(model, frame, conf=0.25):
-    """Best mouse box on the arena crop, as (cx, cy, conf) in frame coordinates."""
-    r = model.predict(crop(frame), imgsz=IMGSZ, conf=conf, verbose=False)[0]
-    if not len(r.boxes):
-        return None
-    j = int(r.boxes.conf.argmax())
-    x1, y1, x2, y2 = r.boxes.xyxy[j].tolist()
-    ox, oy = crop_box()[:2]
-    return (x1 + x2) / 2 + ox, (y1 + y2) / 2 + oy, float(r.boxes.conf[j])
-
-
-def evaluate(weights, tag):
-    m = YOLO(weights)
-    for video in VIDEOS:
-        name = os.path.splitext(os.path.basename(video))[0]
-        total = int(cv2.VideoCapture(video).get(cv2.CAP_PROP_FRAME_COUNT))
-        frames = sample_frames(video)
-        refs = reference_positions(frames)
-        t = time.perf_counter()
-        preds = [detect(m, f) for _, f in frames]
-        ms = (time.perf_counter() - t) / len(frames) * 1000
-        out = os.path.join("outputs", "probe", name)
-        score(f"{tag}_all", frames, refs, preds, out)
-        held = [j for j, (i, _) in enumerate(frames) if i >= (1 - VAL_FRACTION) * total]
-        score(f"{tag}_heldout", [frames[j] for j in held], [refs[j] for j in held], [preds[j] for j in held], out)
-        print(f"   {name}: {ms:.0f} ms/frame on CPU", flush=True)
+            px, py = cx * w - ox, cy * h - oy
+            if check_hand and hand_in_view(img, bg) or not (0 <= px < cw and 0 <= py < ch):
+                c["skipped"] += 1  # mouse being placed / picked up, or outside the crop
+                continue
+            split = "val" if idx >= (1 - VAL_FRACTION) * total else "train"
+            cv2.imwrite(os.path.join(dataset, "images", split, stem + ".jpg"), img[oy:oy2, ox:ox2])
+            with open(os.path.join(dataset, "labels", split, stem + ".txt"), "w") as fh:
+                fh.write(f"0 {px / cw:.6f} {py / ch:.6f} {bw * w / cw:.6f} {bh * h / ch:.6f}\n")
+            c[split] += 1
+    with open(os.path.join(dataset, "data.yaml"), "w") as fh:
+        fh.write(f"path: {os.path.abspath(dataset)}\ntrain: images/train\nval: images/val\nnames:\n  0: mouse\n")
+    for k, v in counts.items():
+        print(f"  {k:28s} {v}")
+    print("  total", {s: sum(v[s] for v in counts.values()) for s in ("train", "val", "skipped")}, flush=True)
+    return os.path.join(dataset, "data.yaml")
 
 
 if __name__ == "__main__":
-    data = build_dataset()
-    model = YOLO("yolo11n.yaml").load(KUNIN)  # backbone + neck from the mouse-pose model, new 1-class detect head
-    model.train(data=data, epochs=20, imgsz=IMGSZ, batch=16, device="cpu", workers=2, patience=8,
-                project=os.path.abspath("outputs/train"), name="kunin_ft", exist_ok=True,
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--name", default="mouse_det_v2")
+    ap.add_argument("--epochs", type=int, default=20)
+    ap.add_argument("--init", help="start from this detector instead of the KUNIN pose backbone")
+    args = ap.parse_args()
+    data = build_dataset(os.path.join("data", "datasets", args.name))
+    if args.init:
+        model = YOLO(args.init)
+    else:
+        model = YOLO("yolo11n.yaml").load(KUNIN)  # backbone + neck from the mouse-pose model, new 1-class detect head
+    model.train(data=data, epochs=args.epochs, imgsz=IMGSZ, batch=16, device="cpu", workers=2, patience=5,
+                project=os.path.abspath("outputs/train"), name=args.name, exist_ok=True,
                 fliplr=0.5, flipud=0.5, degrees=10, hsv_h=0, hsv_s=0, plots=True)
-    evaluate("outputs/train/kunin_ft/weights/best.pt", "kunin_ft")
+    shutil.copy(os.path.join("outputs", "train", args.name, "weights", "best.pt"), os.path.join("models", args.name + ".pt"))
+    print(f"saved models/{args.name}.pt")

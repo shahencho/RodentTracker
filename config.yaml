@@ -1,0 +1,19 @@
+# Stage 1 tracking and open-field metrics
+
+detector:
+  weights: models/mouse_det_v1.pt   # YOLO11n from the KUNIN mouse backbone, fine-tuned on YSMU arena crops
+  imgsz: 352                         # arena crop is ~360 px, so the mouse stays at native resolution
+  conf: 0.25
+  batch: 16
+
+tracking:
+  max_speed_cm_s: 100     # faster apparent moves are detection errors and are dropped
+  max_gap_s: 0.5          # gaps up to this long are interpolated; longer gaps stay missing
+  smooth_s: 0.2           # rolling-median window on the path
+  hand_foreground_px: 2500  # more changed pixels than this in the arena = experimenter's hand in view
+
+open_field:
+  center_fraction: 0.5    # center zone sides = this fraction of the arena sides (25% of the area)
+  move_threshold_cm_s: 2  # slower steps are counted as standing still (removes jitter from distance)
+  min_zone_s: 0.2         # a zone change only counts if the mouse stays this long
+  bin_s: 60               # time bins for the per-minute table

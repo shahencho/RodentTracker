@@ -1,6 +1,5 @@
 # Python
 .venv/
-.venv-dlc/
 __pycache__/
 *.pyc
 
@@ -28,4 +27,3 @@ Thumbs.db
 
 # Third-party model downloads
 models/third_party/
-.venv-dlc/

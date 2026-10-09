@@ -2,8 +2,9 @@
 
 Writes the image + label next to the YOLOE ones and a fills.csv, plus a contact sheet
 of every filled box for checking by eye.
-Usage: .venv\\Scripts\\python experiments\\fill_misses_bgsub.py data\\ysmu\\*.mp4
+Usage: .venv\\Scripts\\python experiments\\fill_misses_bgsub.py data\\ysmu\\*.mp4 [--calib FILE_OR_DIR] [--min-side 14]
 """
+import argparse
 import csv
 import os
 import sys
@@ -12,17 +13,18 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from probe_common import ARENA, sample_frames  # noqa: E402
+from src.calibration import Calibration  # noqa: E402
 
 LABELS = os.path.join("data", "labels", "yoloe")
-MIN_SIDE = 14  # px; a whole ~30 px mouse is never thinner than this
 
 
-def blob_box(frame, bg):
+def blob_box(frame, bg, arena, min_side):
     g = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
     shift = int(np.median(bg)) - int(np.median(g))  # undo auto-exposure drift
     g = cv2.add(g, shift) if shift > 0 else cv2.subtract(g, -shift)
-    x1, y1, x2, y2 = ARENA
+    x1, y1, x2, y2 = arena
     mask = np.zeros_like(bg)
     mask[y1:y2, x1:x2] = 255
     d = cv2.bitwise_and(cv2.absdiff(g, bg), mask)
@@ -34,13 +36,25 @@ def blob_box(frame, bg):
     if not cnts:
         return None
     x, y, w, h = cv2.boundingRect(max(cnts, key=cv2.contourArea))
-    if min(w, h) < MIN_SIDE:  # only part of the mouse separated from the background
+    if min(w, h) < min_side:  # only part of the mouse separated from the background
         return None
     return x, y, x + w, y + h
 
 
-for video in sys.argv[1:]:
+ap = argparse.ArgumentParser()
+ap.add_argument("videos", nargs="+")
+ap.add_argument("--calib")
+ap.add_argument("--min-side", type=int, default=14, help="px; a whole mouse is never thinner than this")
+args = ap.parse_args()
+
+for video in args.videos:
     name = os.path.splitext(os.path.basename(video))[0]
+    arena = ARENA
+    if args.calib:
+        path = os.path.join(args.calib, name + ".json") if os.path.isdir(args.calib) else args.calib
+        cap0 = cv2.VideoCapture(video)
+        shape = (int(cap0.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(cap0.get(cv2.CAP_PROP_FRAME_WIDTH)))
+        arena = Calibration.load(path).crop_box(shape, 0.08)
     d = os.path.join(LABELS, name)
     missed = [int(r["frame"]) for r in csv.DictReader(open(os.path.join(d, "detections.csv"))) if r["flag"] == "no_box"]
     gray = [cv2.GaussianBlur(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY), (5, 5), 0) for _, f in sample_frames(video, 60)]
@@ -54,7 +68,7 @@ for video in sys.argv[1:]:
                 os.remove(p)
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ok, f = cap.read()
-        box = blob_box(f, bg) if ok else None
+        box = blob_box(f, bg, arena, args.min_side) if ok else None
         rows.append([idx, *(box or ("", "", "", "")), "bgsub" if box else "unfilled"])
         vis = f.copy()
         if box:

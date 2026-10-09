@@ -46,11 +46,11 @@ def preprocess(frame, scale=2):
     return img, to_frame
 
 
-def reference_positions(frames):
+def reference_positions(frames, arena=ARENA, max_fg=MAX_FOREGROUND_PX):
     """Mouse centre per frame from median-background subtraction (None if no blob)."""
     gray = [cv2.GaussianBlur(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY), (5, 5), 0) for _, f in frames]
     bg = np.median(np.stack(gray[::2]), axis=0).astype(np.uint8)
-    x1, y1, x2, y2 = ARENA
+    x1, y1, x2, y2 = arena
     mask = np.zeros_like(bg)
     mask[y1:y2, x1:x2] = 255
     refs = []
@@ -60,7 +60,7 @@ def reference_positions(frames):
         d = cv2.bitwise_and(cv2.absdiff(g, bg), mask)
         _, th = cv2.threshold(d, 18, 255, cv2.THRESH_BINARY)
         th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        if cv2.countNonZero(th) > MAX_FOREGROUND_PX:  # experimenter's hand in view: no reliable mouse position
+        if cv2.countNonZero(th) > max_fg:  # experimenter's hand in view: no reliable mouse position
             refs.append(None)
             continue
         cnts, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -78,14 +78,14 @@ def median_background(video, n=60):
     return np.median(np.stack(gray), axis=0).astype(np.uint8)
 
 
-def hand_in_view(frame, bg):
+def hand_in_view(frame, bg, arena=ARENA, max_fg=MAX_FOREGROUND_PX):
     """True when far more of the arena differs from the background than a mouse could explain."""
     g = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
     shift = int(np.median(bg)) - int(np.median(g))
     g = cv2.add(g, shift) if shift > 0 else cv2.subtract(g, -shift)
-    x1, y1, x2, y2 = ARENA
+    x1, y1, x2, y2 = arena
     d = cv2.absdiff(g, bg)[y1:y2, x1:x2]
-    return cv2.countNonZero(cv2.threshold(d, 18, 255, cv2.THRESH_BINARY)[1]) > MAX_FOREGROUND_PX
+    return cv2.countNonZero(cv2.threshold(d, 18, 255, cv2.THRESH_BINARY)[1]) > max_fg
 
 
 def score(name, frames, refs, preds, outdir):
@@ -133,23 +133,23 @@ def score(name, frames, refs, preds, outdir):
 
 # --- YOLOE visual prompt helpers ---
 
-def wall_distance(r):
-    x1, y1, x2, y2 = ARENA
+def wall_distance(r, arena=ARENA):
+    x1, y1, x2, y2 = arena
     return min(r[0] - x1, x2 - r[0], r[1] - y1, y2 - r[1])
 
 
-def pick_examples(refs, n):
+def pick_examples(refs, n, arena=ARENA):
     """Frames whose mouse positions are spread out: most central first, then nearest to walls/corners."""
     cand = [j for j, r in enumerate(refs) if r]
-    cand.sort(key=lambda j: -wall_distance(refs[j]))
+    cand.sort(key=lambda j: -wall_distance(refs[j], arena))
     chosen = [cand[0]]
     while len(chosen) < n:  # farthest-point sampling over positions
         chosen.append(max(cand, key=lambda j: min(np.hypot(refs[j][0] - refs[c][0], refs[j][1] - refs[c][1]) for c in chosen)))
     return chosen
 
 
-def build_reference(frames, refs, examples):
-    x1, y1, x2, y2 = ARENA
+def build_reference(frames, refs, examples, arena=ARENA, half=HALF):
+    x1, y1, x2, y2 = arena
     w, h = x2 - x1, y2 - y1
     cols = 1 if len(examples) == 1 else 2
     rows = int(np.ceil(len(examples) / cols))
@@ -159,15 +159,15 @@ def build_reference(frames, refs, examples):
         r, c = divmod(k, cols)
         canvas[r * h:(r + 1) * h, c * w:(c + 1) * w] = frames[j][1][y1:y2, x1:x2]
         cx, cy = refs[j][0] - x1 + c * w, refs[j][1] - y1 + r * h
-        boxes.append([cx - HALF, cy - HALF, cx + HALF, cy + HALF])
+        boxes.append([cx - half, cy - half, cx + half, cy + half])
     return canvas, np.array(boxes, float)
 
 
-def best_box(res, max_size=90):
+def best_box(res, max_size=90, arena=ARENA):
     best = None
     for b, c in zip(res.boxes.xyxy.tolist(), res.boxes.conf.tolist()):
         cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
-        x1, y1, x2, y2 = ARENA
+        x1, y1, x2, y2 = arena
         small = max(b[2] - b[0], b[3] - b[1]) <= max_size
         if x1 <= cx <= x2 and y1 <= cy <= y2 and small and (best is None or c > best[2]):
             best = (cx, cy, c, b)
