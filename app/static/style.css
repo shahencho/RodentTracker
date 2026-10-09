@@ -46,3 +46,4 @@ td:not(:first-child), th:not(:first-child) { text-align: right; font-variant-num
 .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 200px; }
 .card b { font-size: 20px; display: block; }
 #val-scatter { max-width: 900px; width: 100%; display: block; margin-bottom: 12px; }
+#start_s, #end_s { width: 104px !important; }

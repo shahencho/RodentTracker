@@ -8,6 +8,7 @@ const api = async (path, opts = {}) => {
 const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" },
                                          body: JSON.stringify(body) });
 
+let changeTimer = null;
 let video = null, info = null, setup = null, geom = null, img = new Image(), scale = 1;
 let analysed = false, dragging = -1, downAt = null, pollTimer = null;
 const HANDLE = 8;
@@ -38,6 +39,9 @@ $("upload").onchange = async () => {
 };
 
 async function openVideo(v) {
+  clearTimeout(changeTimer);  // a pending save belongs to the previous video
+  analyseSeq++;               // ignore analysis replies for the previous video
+  clearResults();
   video = v;
   info = await api("/api/info?video=" + encodeURIComponent(v));
   setup = info.setup;
@@ -95,13 +99,13 @@ document.querySelectorAll("[data-auto]").forEach((b) => b.onclick = () => { $(b.
 $("set-start").onclick = () => { $("start_s").value = (+$("scrub").value).toFixed(1); readForm(); changed(); };
 $("set-end").onclick = () => { $("end_s").value = (+$("scrub").value).toFixed(1); readForm(); changed(); };
 
-let changeTimer = null;
 function changed() {  // any setup change: redraw now, save + re-analyse shortly after
   refreshGeometry();
   clearTimeout(changeTimer);
+  const v = video, s = JSON.parse(JSON.stringify(setup));  // bind to this video's setup as it is now
   changeTimer = setTimeout(async () => {
-    await post("/api/setup?video=" + encodeURIComponent(video), setup);
-    if (analysed) analyse();
+    await post("/api/setup?video=" + encodeURIComponent(v), s);
+    if (analysed && v === video) analyse();
   }, 400);
 }
 
@@ -226,11 +230,12 @@ function table(el, header, rows) {
 }
 let analyseSeq = 0;
 async function analyse() {
-  const seq = ++analyseSeq;
+  const seq = ++analyseSeq, v = video;
+  $("auto-times").textContent = "Analysing…";
   let r;
-  try { r = await post("/api/analyze?video=" + encodeURIComponent(video), setup); }
-  catch (err) { alertBox(err.message); return; }
-  if (seq !== analyseSeq) return;  // a newer request superseded this one
+  try { r = await post("/api/analyze?video=" + encodeURIComponent(v), setup); }
+  catch (err) { if (seq === analyseSeq) alertBox(err.message); return; }
+  if (seq !== analyseSeq || v !== video) return;  // superseded, or the user switched video
   $("auto-times").textContent = `Detected automatically: start ${r.auto_start_s} s (hand gone, mouse present), end ${r.auto_end_s} s.`;
   $("start_s").placeholder = `auto (${r.auto_start_s})`;
   $("end_s").placeholder = `auto (${r.auto_end_s})`;
