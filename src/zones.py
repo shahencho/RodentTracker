@@ -91,3 +91,15 @@ class ZoneSpec:
         lines = [[[x, 0.0], [x, self.height_cm]] for x in np.arange(self.grid_cm, self.width_cm - 1e-6, self.grid_cm)]
         lines += [[[0.0, y], [self.width_cm, y]] for y in np.arange(self.grid_cm, self.height_cm - 1e-6, self.grid_cm)]
         return [[list(map(float, a)), list(map(float, b))] for a, b in lines]
+
+    def drawing(self):
+        """Zone polygons (cm) to draw: name -> list of polygons."""
+        out = {"centre": self.outlines_cm("centre")}
+        if "corners" in self.masks:
+            out["corners"] = self.outlines_cm("corners")
+        return out
+
+    @property
+    def extent(self):
+        """x0, x1, y0 (bottom), y1 (top) for imshow."""
+        return 0.0, self.width_cm, self.height_cm, 0.0

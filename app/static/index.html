@@ -8,7 +8,7 @@
 </head>
 <body>
 <header>
-  <strong>RodentTracker</strong> <span class="muted">open field · one mouse</span>
+  <strong>RodentTracker</strong> <span class="muted">open field · plus maze · one mouse</span>
   <nav>
     <button class="tab active" data-tab="setup">Setup</button>
     <button class="tab" data-tab="results">Results</button>
@@ -24,6 +24,13 @@
       <select id="video"></select>
       <label class="upload">Upload .mp4 <input type="file" id="upload" accept=".mp4" hidden></label>
 
+      <h3>Test</h3>
+      <select id="test">
+        <option value="open_field">Open field</option>
+        <option value="epm">Elevated plus maze</option>
+      </select>
+
+      <div id="of-settings">
       <h3>Arena</h3>
       <div class="row"><label>Width</label><input type="number" id="width_cm" step="0.5" min="1"> cm</div>
       <div class="row"><label>Height</label><input type="number" id="height_cm" step="0.5" min="1"> cm</div>
@@ -37,6 +44,16 @@
       <p class="hint">Click a grid square on the image to add it to, or remove it from, the centre zone.</p>
       <button id="reset-zones" class="small">Reset to default (50%, no clicked squares)</button>
       <div class="row"><label><input type="checkbox" id="corner_zones"> Corner zones (20% of side)</label></div>
+      </div>
+
+      <div id="epm-settings" class="hidden">
+      <h3>Maze</h3>
+      <div class="row"><label><input type="radio" name="maze_mode" value="tips"> 4 arm tips + width</label></div>
+      <div class="row"><label><input type="radio" name="maze_mode" value="corners"> 12 corners</label></div>
+      <div class="row"><label>Length</label><input type="number" id="arm_span_cm" step="0.5" min="1"> cm tip to tip</div>
+      <div class="row"><label>Arm width</label><input type="number" id="arm_width_cm" step="0.1" min="0.5"> cm</div>
+      <p class="hint" id="maze-hint"></p>
+      </div>
 
       <h3>Timing</h3>
       <div class="row"><label>Start</label><input type="number" id="start_s" step="0.1" placeholder="auto"> s
@@ -60,8 +77,7 @@
         <button class="small" id="set-start">Set start here</button>
         <button class="small" id="set-end">Set end here</button>
       </div>
-      <p class="hint">Drag the 4 red handles onto the corners of the arena <b>floor</b> (where the walls meet the floor).
-        Blue = centre zone, orange = corner zones, grey = grid.</p>
+      <p class="hint" id="canvas-hint"></p>
     </div>
   </section>
 

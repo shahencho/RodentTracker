@@ -1,4 +1,4 @@
-"""One analysis run: cached detections + a setup (arena, zones, timing) -> open-field results.
+"""One analysis run: cached detections + a setup (arena or maze, zones, timing) -> results for the chosen test.
 
 Shared by scripts/analyze_video.py and the UI server, so both always give the same numbers. The detector runs
 once per video (track_video); everything here is fast, so the UI can recompute on every setup change.
@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from src import epm
 from src.calibration import Calibration
 from src.metrics import open_field
 from src.tracking import auto_end_s, auto_start_s, clean_track
@@ -16,7 +17,7 @@ from src.zones import ZoneSpec
 
 @dataclass
 class Setup:
-    corners_px: list                      # floor corners TL, TR, BR, BL in image pixels
+    corners_px: list = field(default_factory=list)  # open field: floor corners TL, TR, BR, BL in image pixels
     width_cm: float = 40.0
     height_cm: float = 40.0
     grid_cm: float = 10.0
@@ -27,11 +28,27 @@ class Setup:
     start_s: float | None = None          # None = automatic
     end_s: float | None = None
     corners_source: str = ""              # where the corners came from, shown in the UI
+    test: str = "open_field"              # "open_field" or "epm"
+    # elevated plus maze
+    maze_mode: str = "tips"               # "tips" (4 arm tips + width) or "corners" (12 points)
+    maze_tips_px: list = field(default_factory=list)   # top, right, bottom, left arm tips
+    maze_points_px: dict = field(default_factory=dict)  # the 12 named points (used in "corners" mode)
+    arm_span_cm: float = 65.5             # tip-to-tip length of the maze
+    arm_width_cm: float = 5.5
+
+    def maze_points(self):
+        if self.maze_mode == "corners" and self.maze_points_px:
+            return self.maze_points_px
+        return epm.points_from_tips(self.maze_tips_px, self.arm_span_cm, self.arm_width_cm)
 
     def calibration(self):
+        if self.test == "epm":
+            return epm.MazeCalibration(self.maze_points(), self.arm_span_cm, self.arm_width_cm)
         return Calibration(self.corners_px, self.width_cm, self.height_cm)
 
-    def zones(self, corner_fraction=0.2):
+    def zones(self, corner_fraction=0.2, calib=None):
+        if self.test == "epm":
+            return epm.MazeZones(calib or self.calibration())
         return ZoneSpec(self.width_cm, self.height_cm, self.grid_cm, self.center_mode, self.center_value,
                         self.toggled_cells, self.corner_zones, corner_fraction)
 
@@ -53,6 +70,9 @@ def analyze(raw, fps, setup, cfg):
     raw.attrs["fps"] = fps
     tc, oc = cfg["tracking"], cfg["open_field"]
     calib = setup.calibration()
+    if setup.test == "epm":  # DLCAnalyzer: tracked points far outside the maze (scaled 1.8x) are errors
+        far = ~calib.inclusion_px().contains_points(raw[["x_px", "y_px"]].fillna(-1e6).to_numpy())
+        raw.loc[far & raw.x_px.notna(), ["x_px", "y_px"]] = np.nan
     track = clean_track(raw, calib, tc["max_speed_cm_s"], tc["max_gap_s"], tc["smooth_s"])
 
     auto_start = auto_start_s(raw, tc["hand_foreground_px"])
@@ -63,8 +83,9 @@ def analyze(raw, fps, setup, cfg):
     if len(win) < 2:
         raise ValueError(f"analysis window {start:.1f}-{end:.1f} s contains no frames")
 
-    zones = setup.zones(oc["corner_fraction"])
-    summary, table, per_bin, per_frame = open_field(
+    zones = setup.zones(oc["corner_fraction"], calib)
+    measure = epm.epm_measures if setup.test == "epm" else open_field
+    summary, table, per_bin, per_frame = measure(
         win[["x_cm", "y_cm"]].to_numpy(), win.time_s.to_numpy(), fps, zones,
         oc["movement_cutoff_cm_s"], oc["integration_period_frames"], oc["immobile_min_s"],
         oc["max_speed_min_cm"], oc["bin_s"])

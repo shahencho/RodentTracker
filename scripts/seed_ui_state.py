@@ -2,7 +2,8 @@
 
 - YSMU: saves the setup of the first video from calib/ysmu_cage22.json (the second video then shows
   "copied from the saved setup of ..."), and copies cached detections from outputs/analysis/<video>/.
-- Sturman test videos: setup from calib/sturman/<video>.json (42 x 42 cm) and detections cached by the validation.
+- Sturman open-field test videos: setup from calib/sturman/<video>.json (42 x 42 cm), detections from the validation.
+- Sturman plus-maze videos: 12 maze points from the DLC tracks, detections from validate_epm.py.
 
     .venv\\Scripts\\python scripts\\seed_ui_state.py
 """
@@ -36,3 +37,18 @@ for i, v in enumerate(ysmu):
 for raw in sorted(glob.glob("outputs/validation/mouse_det_v2/OFT_*_raw.csv")):
     vid = os.path.basename(raw)[:-len("_raw.csv")]
     seed(f"data/sturman/oft/{vid}.mp4", f"calib/sturman/{vid}.json", raw)
+
+# Sturman EPM videos: the 12 maze points from the DLC tracks (12-corner mode), detections cached by validate_epm.py
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "experiments"))
+from dlcanalyzer_ref import epm_medians, read_dlc  # noqa: E402
+from epm_quickcheck import dlc_file_for as epm_dlc_file  # noqa: E402
+
+for raw in sorted(glob.glob("outputs/validation/mouse_det_v2_epm/EPM_*_raw.csv")):
+    vid = os.path.basename(raw)[:-len("_raw.csv")]
+    video = f"data/sturman/epm/{vid}.mp4"
+    if not os.path.exists(video):
+        continue
+    points = {p: v.tolist() for p, v in epm_medians(read_dlc(epm_dlc_file(vid))).items()}
+    Setup(test="epm", maze_mode="corners", maze_points_px=points).save(os.path.join(state_dir(video), "setup.json"))
+    shutil.copy(raw, os.path.join(state_dir(video), "raw_track.csv"))
+    print(f"{video}: plus-maze setup from DLC maze points, detections copied")

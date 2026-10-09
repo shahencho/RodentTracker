@@ -38,12 +38,16 @@ $("upload").onchange = async () => {
   await loadVideos(r.video);
 };
 
+let openSeq = 0;
 async function openVideo(v) {
+  const seq = ++openSeq;      // a newer openVideo call supersedes this one
   clearTimeout(changeTimer);  // a pending save belongs to the previous video
   analyseSeq++;               // ignore analysis replies for the previous video
   clearResults();
   video = v;
-  info = await api("/api/info?video=" + encodeURIComponent(v));
+  const inf = await api("/api/info?video=" + encodeURIComponent(v));
+  if (seq !== openSeq) return;  // the user picked another video meanwhile
+  info = inf;
   setup = info.setup;
   analysed = info.analysed;
   $("scrub").max = (info.frames / info.fps).toFixed(2);
@@ -51,7 +55,9 @@ async function openVideo(v) {
   showNotice();
   fillForm();
   await loadFrame(0);
+  if (seq !== openSeq) return;
   await refreshGeometry();
+  if (seq !== openSeq) return;
   $("run-hint").textContent = analysed ? "Detections are cached: changes below update the results instantly."
                                        : "The detector has not run on this video yet (takes about as long as the video).";
   if (analysed) analyse(); else clearResults();
@@ -59,15 +65,31 @@ async function openVideo(v) {
 
 function showNotice() {
   const n = $("notice");
-  const src = setup.corners_source;
+  const src = setup.corners_source, maze = setup.test === "epm";
+  const what = maze ? "Maze points" : "Corners";
   n.classList.toggle("warn", src === "none");
   n.innerHTML = src === "none"
-    ? "<b>No saved setup for this camera.</b> Corners are placed at a default position in the middle of the image — drag the 4 red handles onto the floor corners."
-    : `<b>Corners: ${src}.</b> Check that the red outline sits on the arena floor and drag the handles if it does not.`;
+    ? `<b>No saved setup for this camera.</b> ${what} are placed at a default position in the middle of the image — drag the red handles onto the ${maze ? "maze" : "floor corners"}.`
+    : `<b>${what}: ${src}.</b> Check that the red outline sits on the ${maze ? "maze" : "arena floor"} and drag the handles if it does not.`;
+  $("canvas-hint").innerHTML = maze
+    ? (setup.maze_mode === "tips"
+       ? "Drag <b>C1</b> and <b>C2</b> onto the ends of the <b>closed</b> arms and <b>O1</b>, <b>O2</b> onto the ends of the <b>open</b> arms (middle of each arm end). Set the arm width on the left."
+       : "Drag each of the 12 corners of the '+' onto the maze.")
+      + " Green = closed arms, red = open arms, blue = centre."
+    : "Drag the 4 red handles onto the corners of the arena <b>floor</b> (where the walls meet the floor). Blue = centre zone, orange = corner zones, grey = grid.";
+  $("maze-hint").textContent = setup.maze_mode === "tips"
+    ? "Simple: the 12 corners are built from the tips and the width."
+    : "Accurate for a tilted camera: every corner is placed by you.";
 }
 
 // ---------- form <-> setup ----------
 function fillForm() {
+  $("test").value = setup.test;
+  $("of-settings").classList.toggle("hidden", setup.test === "epm");
+  $("epm-settings").classList.toggle("hidden", setup.test !== "epm");
+  document.querySelector(`input[name=maze_mode][value=${setup.maze_mode}]`).checked = true;
+  $("arm_span_cm").value = setup.arm_span_cm;
+  $("arm_width_cm").value = setup.arm_width_cm;
   $("width_cm").value = setup.width_cm;
   $("height_cm").value = setup.height_cm;
   $("grid_cm").value = setup.grid_cm;
@@ -79,6 +101,8 @@ function fillForm() {
   $("end_s").value = setup.end_s ?? "";
 }
 function readForm() {
+  setup.arm_span_cm = +$("arm_span_cm").value;
+  setup.arm_width_cm = +$("arm_width_cm").value;
   setup.width_cm = +$("width_cm").value;
   setup.height_cm = +$("height_cm").value;
   setup.grid_cm = +$("grid_cm").value;
@@ -88,9 +112,18 @@ function readForm() {
   setup.start_s = $("start_s").value === "" ? null : +$("start_s").value;
   setup.end_s = $("end_s").value === "" ? null : +$("end_s").value;
 }
-["width_cm", "height_cm", "grid_cm", "center_percent", "center_cm", "corner_zones", "start_s", "end_s"]
+["width_cm", "height_cm", "grid_cm", "center_percent", "center_cm", "corner_zones", "start_s", "end_s",
+ "arm_span_cm", "arm_width_cm"]
   .forEach((id) => $(id).onchange = () => { readForm(); changed(); });
 document.querySelectorAll("input[name=center_mode]").forEach((r) => r.onchange = () => { readForm(); changed(); });
+$("test").onchange = () => { setup.test = $("test").value; fillForm(); showNotice(); changed(); };
+document.querySelectorAll("input[name=maze_mode]").forEach((r) => r.onchange = () => {
+  const mode = document.querySelector("input[name=maze_mode]:checked").value;
+  if (mode === "corners" && geom?.points) setup.maze_points_px = JSON.parse(JSON.stringify(geom.points));
+  if (mode === "tips" && geom?.tips) setup.maze_tips_px = JSON.parse(JSON.stringify(geom.tips));
+  setup.maze_mode = mode;
+  showNotice(); changed();
+});
 $("reset-zones").onclick = () => {
   setup.center_mode = "percent"; setup.center_value = 50; setup.toggled_cells = [];
   fillForm(); changed();
@@ -138,22 +171,33 @@ function path(points, close = true) {
 function draw() {
   if (!img.complete || !setup) return;
   ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  const colours = { corners: ["rgba(224,123,0,.18)", "#e07b00"], centre: ["rgba(31,111,209,.22)", "#1f6fd1"],
+                    open: ["rgba(214,32,32,.18)", "#d62020"], closed: ["rgba(46,157,79,.2)", "#2e9d4f"] };
   if (geom && dragging < 0) {
     ctx.lineWidth = 1; ctx.strokeStyle = "rgba(160,160,160,.9)";
     geom.grid.forEach((l) => { path(l, false); ctx.stroke(); });
-    ctx.fillStyle = "rgba(224,123,0,.18)"; ctx.strokeStyle = "#e07b00"; ctx.lineWidth = 2;
-    geom.corners.forEach((p) => { path(p); ctx.fill(); ctx.stroke(); });
-    ctx.fillStyle = "rgba(31,111,209,.22)"; ctx.strokeStyle = "#1f6fd1";
-    geom.centre.forEach((p) => { path(p); ctx.fill(); ctx.stroke(); });
+    ctx.lineWidth = 2;
+    for (const [name, polys] of Object.entries(geom.zones)) {
+      [ctx.fillStyle, ctx.strokeStyle] = colours[name];
+      polys.forEach((p) => { path(p); ctx.fill(); ctx.stroke(); });
+    }
   }
+  const hs = handles();
   ctx.strokeStyle = "#d62020"; ctx.lineWidth = 2;
-  path(setup.corners_px); ctx.stroke();
-  setup.corners_px.forEach(([x, y], i) => {
+  if (setup.test !== "epm") { path(setup.corners_px); ctx.stroke(); }
+  else if (dragging >= 0 && setup.maze_mode === "corners") { path(MAZE_ORDER.map((k) => setup.maze_points_px[k])); ctx.stroke(); }
+  hs.forEach(({ pt: [x, y], label }) => {
     ctx.beginPath(); ctx.arc(x * scale, y * scale, HANDLE, 0, 2 * Math.PI);
     ctx.fillStyle = "rgba(214,32,32,.85)"; ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(["TL", "TR", "BR", "BL"][i], x * scale, y * scale);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, x * scale, y * scale);
   });
+}
+const MAZE_ORDER = ["tl", "tr", "ctr", "rt", "rb", "cbr", "br", "bl", "cbl", "lb", "lt", "ctl"];
+function handles() {  // draggable points for the current test: {pt (live array), label}
+  if (setup.test !== "epm") return setup.corners_px.map((pt, i) => ({ pt, label: ["TL", "TR", "BR", "BL"][i] }));
+  if (setup.maze_mode === "tips") return setup.maze_tips_px.map((pt, i) => ({ pt, label: ["C1", "O1", "C2", "O2"][i] }));
+  return MAZE_ORDER.map((k) => ({ pt: setup.maze_points_px[k], label: k }));
 }
 function evPoint(e) {
   const r = cv.getBoundingClientRect();
@@ -170,11 +214,12 @@ function inside(pt, poly) {
 cv.onmousedown = (e) => {
   const p = evPoint(e);
   downAt = p;
-  dragging = setup.corners_px.findIndex(([x, y]) => Math.hypot(x - p[0], y - p[1]) * scale <= HANDLE + 4);
+  dragging = handles().findIndex(({ pt: [x, y] }) => Math.hypot(x - p[0], y - p[1]) * scale <= HANDLE + 4);
 };
 cv.onmousemove = (e) => {
   if (dragging < 0) return;
-  setup.corners_px[dragging] = evPoint(e);
+  const [x, y] = evPoint(e), pt = handles()[dragging].pt;
+  pt[0] = x; pt[1] = y;  // handles() returns the live arrays inside setup
   draw();
 };
 cv.onmouseup = (e) => {

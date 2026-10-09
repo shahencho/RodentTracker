@@ -14,6 +14,8 @@ OUT = "outputs/ui_check"
 AN1, AN2 = "data/ysmu/cntrol60_cage22_an1_OF1.mp4", "data/ysmu/cntrol60_cage22_an2_OF1.mp4"
 os.makedirs(OUT, exist_ok=True)
 backup = {p: open(p, "rb").read() for p in glob.glob("outputs/ui/*/setup.json")}
+for p in glob.glob("outputs/ui/cntrol60_cage22_an2_OF1_*/setup.json"):  # an2 must start from the copied an1 setup
+    os.remove(p)
 results = []
 
 

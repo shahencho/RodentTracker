@@ -39,6 +39,14 @@ class Calibration:
         h, w = frame_shape[:2]
         return int(max(0, x1 - px)), int(max(0, y1 - py)), int(min(w, x2 + px)), int(min(h, y2 + py))
 
+    def valid_region_px(self, margin_fraction=0.25):
+        """Where the mouse can be: the floor widened by a margin (a rearing mouse is seen above the walls)."""
+        from matplotlib.path import Path
+        mx, my = self.width_cm * margin_fraction, self.height_cm * margin_fraction
+        quad = [[-mx, -my], [self.width_cm + mx, -my], [self.width_cm + mx, self.height_cm + my],
+                [-mx, self.height_cm + my]]
+        return Path(self.to_px(quad))
+
     def save(self, path):
         with open(path, "w") as fh:
             json.dump({"corners_px": self.corners_px.round(1).tolist(), "width_cm": self.width_cm,

@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
-from src import report  # noqa: E402
+from src import epm, report  # noqa: E402
 from src.analysis import Setup, analyze, default_corners, nan_safe  # noqa: E402
 from src.detector import MouseDetector  # noqa: E402
 from src.tracking import track_video  # noqa: E402
@@ -73,6 +73,14 @@ def raw_path(video):
 
 
 def load_setup(video):
+    s = _load_setup(video)
+    if len(s.maze_tips_px) != 4:  # setups saved before the plus maze existed
+        info = video_info(video)
+        s.maze_tips_px = epm.default_tips(info["width"], info["height"])
+    return s
+
+
+def _load_setup(video):
     """This video's saved setup; else the most recently saved setup from the same folder (same camera);
     else default corners. corners_source says which, for the notice in the UI."""
     own = os.path.join(state_dir(video), "setup.json")
@@ -95,7 +103,8 @@ def load_setup(video):
         return s
     info = video_info(video)
     return Setup(default_corners(info["width"], info["height"]), d["width_cm"], d["height_cm"], d["grid_cm"],
-                 d["center_mode"], d["center_value"], corners_source="none")
+                 d["center_mode"], d["center_value"], corners_source="none",
+                 maze_tips_px=epm.default_tips(info["width"], info["height"]))
 
 
 def setup_from_body(body):
@@ -156,8 +165,19 @@ def api_frame(video: str, t: float = 0.0):
 
 @app.post("/api/geometry")
 def api_geometry(body: dict):
-    """Pixel outlines for drawing the setup: floor outline, grid lines, centre and corner zones, grid cells."""
+    """Pixel outlines for drawing the setup: outline, grid lines, zones and grid cells (open field) or the
+    maze arms and its 12 points / 4 tips (plus maze)."""
     s = setup_from_body(body)
+    if s.test == "epm":
+        if len(s.maze_tips_px) != 4 and not s.maze_points_px:
+            raise HTTPException(400, "maze tips missing")
+        calib = s.calibration()
+        zones = s.zones(calib=calib)
+        px = lambda pts: calib.to_px(pts).round(1).tolist()  # noqa: E731
+        points = s.maze_points()
+        return {"outline": [points[p] for p in epm.POINTS], "grid": [], "cells": [],
+                "zones": {name: [px(p) for p in polys] for name, polys in zones.drawing().items()},
+                "points": points, "tips": epm.tips_from_points(points)}
     calib, zones = s.calibration(), s.zones(CFG["open_field"]["corner_fraction"])
     px = lambda pts: calib.to_px(pts).round(1).tolist()  # noqa: E731
     ncol, nrow = zones.grid_shape
@@ -170,8 +190,7 @@ def api_geometry(body: dict):
     return {
         "outline": calib.corners_px.round(1).tolist(),
         "grid": [px(line) for line in zones.grid_lines_cm()],
-        "centre": [px(p) for p in zones.outlines_cm("centre")],
-        "corners": [px(p) for p in zones.outlines_cm("corners")] if "corners" in zones.masks else [],
+        "zones": {name: [px(p) for p in polys] for name, polys in zones.drawing().items()},
         "cells": cells,
     }
 
