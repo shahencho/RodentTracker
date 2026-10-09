@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RodentTracker</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <strong>RodentTracker</strong> <span class="muted">open field · one mouse</span>
+  <nav>
+    <button class="tab active" data-tab="setup">Setup</button>
+    <button class="tab" data-tab="results">Results</button>
+    <button class="tab" data-tab="validation">Validation</button>
+  </nav>
+</header>
+
+<main>
+  <!-- SETUP -->
+  <section id="tab-setup" class="tab-page active">
+    <aside class="panel">
+      <h3>Video</h3>
+      <select id="video"></select>
+      <label class="upload">Upload .mp4 <input type="file" id="upload" accept=".mp4" hidden></label>
+
+      <h3>Arena</h3>
+      <div class="row"><label>Width</label><input type="number" id="width_cm" step="0.5" min="1"> cm</div>
+      <div class="row"><label>Height</label><input type="number" id="height_cm" step="0.5" min="1"> cm</div>
+      <div class="row"><label>Grid</label><input type="number" id="grid_cm" step="1" min="1"> cm</div>
+
+      <h3>Centre zone</h3>
+      <div class="row"><label><input type="radio" name="center_mode" value="percent"> % of side</label>
+        <input type="number" id="center_percent" step="1" min="1" max="100"></div>
+      <div class="row"><label><input type="radio" name="center_mode" value="cm"> cm from walls</label>
+        <input type="number" id="center_cm" step="0.5" min="0"></div>
+      <p class="hint">Click a grid square on the image to add it to, or remove it from, the centre zone.</p>
+      <button id="reset-zones" class="small">Reset to default (50%, no clicked squares)</button>
+      <div class="row"><label><input type="checkbox" id="corner_zones"> Corner zones (20% of side)</label></div>
+
+      <h3>Timing</h3>
+      <div class="row"><label>Start</label><input type="number" id="start_s" step="0.1" placeholder="auto"> s
+        <button class="small" data-auto="start_s">auto</button></div>
+      <div class="row"><label>End</label><input type="number" id="end_s" step="0.1" placeholder="auto"> s
+        <button class="small" data-auto="end_s">auto</button></div>
+      <p class="hint" id="auto-times"></p>
+
+      <h3>Analysis</h3>
+      <button id="run" class="primary">Run analysis</button>
+      <div id="progress" class="progress hidden"><div></div><span></span></div>
+      <p class="hint" id="run-hint"></p>
+    </aside>
+
+    <div class="stage">
+      <div id="notice" class="notice"></div>
+      <canvas id="canvas"></canvas>
+      <div class="timeline">
+        <input type="range" id="scrub" min="0" step="0.04" value="0">
+        <span id="scrub-time">0.0 s</span>
+        <button class="small" id="set-start">Set start here</button>
+        <button class="small" id="set-end">Set end here</button>
+      </div>
+      <p class="hint">Drag the 4 red handles onto the corners of the arena <b>floor</b> (where the walls meet the floor).
+        Blue = centre zone, orange = corner zones, grey = grid.</p>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="tab-results" class="tab-page">
+    <div id="results-empty" class="notice">Choose a video and run the analysis on the Setup tab.</div>
+    <div id="results" class="hidden">
+      <div class="toolbar">
+        <h2 id="results-title"></h2>
+        <a class="button" id="dl-csv">Download results CSV</a>
+        <a class="button" id="dl-track">Download track CSV</a>
+        <a class="button primary" id="dl-pdf">Download PDF report</a>
+      </div>
+      <div class="grid2">
+        <div>
+          <h3>Whole test</h3><table id="whole"></table>
+          <h3>Zones</h3><table id="zones"></table>
+          <p class="hint">Rules: DLCAnalyzer (moving = faster than 5 cm/s with ±5-frame smoothing), immobile = not
+            moving for at least 2 s, zone entry by the animal's centre, line crossings on the grid.</p>
+        </div>
+        <div class="images">
+          <img id="img-track" alt="track plot">
+          <img id="img-heatmap" alt="heat map">
+          <img id="img-per-minute" alt="per-minute chart">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VALIDATION -->
+  <section id="tab-validation" class="tab-page">
+    <h2>Validation against a published reference</h2>
+    <p>Data: 14 open-field videos from Sturman et al. 2020 (Zenodo 3608658, CC BY 4.0) that our detector never saw in
+      training. Reference: the DLCAnalyzer analysis from the same paper (DeepLabCut body-centre track, 42 × 42 cm arena,
+      the first 100 and last 250 frames removed, centre = middle 50% of the side). Our Python port of DLCAnalyzer
+      reproduces the paper's published example (OFT_3) exactly.</p>
+    <div id="val-cards" class="cards"></div>
+    <img id="val-scatter" alt="scatter plots">
+    <table id="val-table"></table>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

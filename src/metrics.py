@@ -96,7 +96,8 @@ def open_field(xy_cm, t, fps, zones, movement_cutoff=5.0, integration_period=5, 
     }
 
     flags = {name: zones.in_zone(name, xy_cm) for name in zones.masks}
-    table = pd.DataFrame({name: zone_measures(f, step, t, fps, integration_period) for name, f in flags.items()}).T
+    table = pd.DataFrame.from_dict({name: zone_measures(f, step, t, fps, integration_period)
+                                    for name, f in flags.items()}, orient="index")
     table.index.name = "zone"
 
     b = ((t - t[0]) // bin_s).astype(int)

@@ -216,6 +216,11 @@ Every question raised so far, with the answer given (8–9 October 2026).
 
 ## 6. Still open
 
+0. **Which distance should the YSMU demo headline?** On YSMU, "total distance" (the DLCAnalyzer raw distance) is about twice "distance while moving": an2 gives 815 cm against 419 cm. The mouse sits still for ~80% of the test, and the box centre of a small white mouse jitters by a fraction of a cm each frame, which adds up. ANY-maze avoids this with adaptive smoothing scaled to the animal's size. On Sturman the raw distance matched DLCAnalyzer within 1.1%, because DeepLabCut jitters in a similar way. Options:
+   - (a) keep raw distance as the headline, as DLCAnalyzer does;
+   - (b) headline "distance while moving";
+   - (c) add ANY-maze-like smoothing as an option.
+
 1. **YSMU's other tests:** which tests do they record besides open field (plus maze, Y-maze, forced swim, novel object…)? With sample videos we can say what we can and can't produce.
 2. **YSMU reference data:** format (ANY-maze export, Excel of manual scores…) and which videos.
 3. **Later phases:** groups and multiple animals, other tests, head and pose points (head entries, freezing, rearing), a general model, licensing.
@@ -282,6 +287,8 @@ How it runs: a local web page started with `run_ui.bat`. A small Python server (
 
 ### 7.4 Step-by-step
 0. **Update this document** with all decisions and the plan. *Done.*
+
+**Status, 9 Oct:** steps 1–6 are built and checked through the API: every endpoint, zone options, start and end, CSV and PDF. The screens themselves still need a visual check in the browser. Start the UI with `run_ui.bat`.
 1. **Metrics engine.**
    - Move the DLCAnalyzer rules into `src/metrics.py` as the default.
    - Add `src/zones.py` (centre / wall / corners as floor-plane masks, toggled grid squares, line crossings).

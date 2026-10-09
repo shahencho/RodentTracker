@@ -5,3 +5,7 @@ pandas>=2.2
 pyyaml>=6.0
 tqdm>=4.66
 lap>=0.5.12              # ByteTrack dependency (ultralytics installs it on first use otherwise)
+fastapi>=0.110          # demo UI server
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9  # video upload
+matplotlib>=3.8          # plots and PDF report

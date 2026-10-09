@@ -11,11 +11,26 @@ py -3.13 -m venv .venv
 
 Datasets are described in [data/README.md](data/README.md).
 
+## Demo UI
+
+```
+run_ui.bat          # starts the local server and opens http://127.0.0.1:8765/
+```
+
+Setup tab: pick a video, check or drag the 4 floor corners, set the arena size, grid and centre zone (or click
+grid squares), adjust start/end, then "Run analysis" (once per video; later changes recalculate instantly).
+Results tab: tables, track plot, heat map, per-minute chart, CSV and PDF downloads. Validation tab: our numbers
+vs the DLCAnalyzer reference on 14 Sturman videos.
+
+`scripts/seed_ui_state.py` pre-loads the YSMU and Sturman setups and cached detections, so the demo opens with
+results. The command-line equivalent is `scripts/analyze_video.py`.
+
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `src/` | tracking, zones, metrics |
+| `src/` | calibration, detector, tracking, zones, metrics, analysis, report (plots, CSV, PDF) |
+| `app/` | demo UI: FastAPI server + one static HTML/JS page |
 | `scripts/` | entry points |
 | `data/` | videos and answer keys (gitignored) |
 | `outputs/` | tracks, metrics CSVs, reports (gitignored) |
