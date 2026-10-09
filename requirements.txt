@@ -1,11 +1,16 @@
-ultralytics>=8.3
-opencv-python>=4.9
-numpy>=1.26
-pandas>=2.2
-pyyaml>=6.0
-tqdm>=4.66
-lap>=0.5.12              # ByteTrack dependency (ultralytics installs it on first use otherwise)
-fastapi>=0.110          # demo UI server
-uvicorn[standard]>=0.29
-python-multipart>=0.0.9  # video upload
-matplotlib>=3.8          # plots and PDF report
+# Pinned to the versions validated on the laptop, so the online demo (deploy/) runs the same code.
+# torch / torchvision: CPU builds (deploy_to_do.sh installs them from download.pytorch.org/whl/cpu; on Windows the
+# default PyPI wheel is already CPU-only)
+torch==2.14.1
+torchvision==0.29.1
+ultralytics==8.4.174
+opencv-python==5.0.0.93
+numpy==2.5.3
+pandas==3.0.6
+pyyaml==6.0.3
+tqdm==4.70.1
+lap==0.5.13              # ByteTrack dependency (ultralytics installs it on first use otherwise)
+fastapi==0.143.0         # demo UI server
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32  # video upload, login form
+matplotlib==3.11.2       # plots and PDF report

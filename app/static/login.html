@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RodentTracker · login</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header><strong>RodentTracker</strong> <span class="muted">demo</span></header>
+<main>
+  <form class="panel login" method="post" action="/login">
+    <h3>Log in</h3>
+    <div class="row"><label>User</label><input name="user" autocomplete="username" required></div>
+    <div class="row"><label>Password</label><input name="password" type="password" autocomplete="current-password" required></div>
+    <p class="hint" id="failed" hidden>Wrong user or password.</p>
+    <button class="primary">Log in</button>
+  </form>
+</main>
+<script>if (location.search.includes("failed")) document.getElementById("failed").hidden = false;</script>
+</body>
+</html>

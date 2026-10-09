@@ -71,12 +71,17 @@
     <div class="stage">
       <div id="notice" class="notice"></div>
       <canvas id="canvas"></canvas>
+      <video id="vid" muted playsinline preload="auto" hidden></video>
       <div class="timeline">
+        <button class="small play" id="play">Play</button>
         <input type="range" id="scrub" min="0" step="0.04" value="0">
         <span id="scrub-time">0.0 s</span>
+        <select id="rate" class="rate"><option value="0.5">0.5×</option><option value="1" selected>1×</option>
+          <option value="2">2×</option><option value="4">4×</option></select>
         <button class="small" id="set-start">Set start here</button>
         <button class="small" id="set-end">Set end here</button>
       </div>
+      <p class="hint warn" id="play-note"></p>
       <p class="hint" id="canvas-hint"></p>
     </div>
   </section>
@@ -90,6 +95,18 @@
         <a class="button" id="dl-csv">Download results CSV</a>
         <a class="button" id="dl-track">Download track CSV</a>
         <a class="button primary" id="dl-pdf">Download PDF report</a>
+      </div>
+      <div class="playback">
+        <canvas id="res-canvas"></canvas>
+        <video id="res-vid" muted playsinline preload="auto" hidden></video>
+        <div class="timeline">
+          <button class="small play" id="res-play">Play</button>
+          <input type="range" id="res-scrub" min="0" step="0.04" value="0">
+          <span id="res-time">0.0 s</span>
+          <select id="res-rate" class="rate"><option value="0.5">0.5×</option><option value="1" selected>1×</option>
+            <option value="2">2×</option><option value="4">4×</option></select>
+        </div>
+        <p class="hint" id="res-status"></p>
       </div>
       <div class="grid2">
         <div>

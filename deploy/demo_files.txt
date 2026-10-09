@@ -1,0 +1,20 @@
+# Demo data copied to the droplet by deploy/upload_demo_data.sh (none of it is in git). ~200 MB.
+# Videos: the 2 YSMU open-field videos, 3 Sturman open-field videos (closest to the reference), 2 Sturman plus-maze
+# videos; each with its saved setup and cached detections (outputs/ui/<video>_<hash>), so the demo opens with results.
+models/mouse_det_v2.pt
+outputs/validation/mouse_det_v2/per_video.csv
+outputs/validation/mouse_det_v2/engine_vs_reference.csv
+data/ysmu/cntrol60_cage22_an1_OF1.mp4
+data/ysmu/cntrol60_cage22_an2_OF1.mp4
+data/sturman/oft/OFT_15.mp4
+data/sturman/oft/OFT_24.mp4
+data/sturman/oft/OFT_49.mp4
+data/sturman/epm/EPM_17.mp4
+data/sturman/epm/EPM_2.mp4
+outputs/ui/cntrol60_cage22_an1_OF1_56ba98
+outputs/ui/cntrol60_cage22_an2_OF1_35c0a7
+outputs/ui/OFT_15_e27d08
+outputs/ui/OFT_24_ce9de0
+outputs/ui/OFT_49_d2c01c
+outputs/ui/EPM_17_128aee
+outputs/ui/EPM_2_9ce4fb

@@ -1,13 +1,18 @@
-"""Local demo server: Setup / Results / Validation for one mouse in the open field.
+"""Demo server: Setup / Results / Validation for one mouse in the open field or the plus maze.
 
     .venv\\Scripts\\python -m uvicorn app.server:app --port 8765     (or run_ui.bat)
 
-Everything runs on this PC. The detector runs once per video (POST /api/run) and its output is cached; every
-other call recomputes from the cache, so changing zones or timing updates the results instantly.
+The detector runs once per video (POST /api/run) and its output is cached; every other call recomputes from the
+cache, so changing zones or timing updates the results instantly. One detector run at a time (the online demo
+shares a small server).
+
+Login: with DEMO_PASSWORD set (environment or .env in the repo root) every page needs it; without it (this PC)
+there is no login. Online deployment: deploy/README.md.
 """
 import base64
 import glob
 import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -19,8 +24,8 @@ import cv2
 import numpy as np
 import pandas as pd
 import yaml
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -28,15 +33,62 @@ sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 from src import epm, report  # noqa: E402
 from src.analysis import Setup, analyze, default_corners, nan_safe  # noqa: E402
-from src.detector import MouseDetector  # noqa: E402
 from src.tracking import track_video  # noqa: E402
+# src.detector (ultralytics + torch, ~400 MB) is imported only when a detector run starts
 
 CFG = yaml.safe_load(open("config.yaml"))
 UI_DIR = os.path.join("outputs", "ui")
 SKIP_DIRS = (os.path.join("data", "labels"), os.path.join("data", "datasets"))
+RERUN_SHIFT = 0.05  # offer a new detector run when an edge of its crop moved more than this fraction of the crop
 app = FastAPI(title="RodentTracker demo")
 _jobs = {}  # video -> {"state", "done", "total", "error"}
 _lock = threading.Lock()
+
+
+# ---------- login (only when DEMO_PASSWORD is set) ----------
+
+def _load_env(path=".env"):
+    if not os.path.exists(path):
+        return
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_env()
+USER, PASSWORD = os.getenv("DEMO_USER", "demo"), os.getenv("DEMO_PASSWORD", "")
+COOKIE = "rodent_session"
+# stateless session: survives restarts; a new password logs everyone out
+TOKEN = hmac.new(PASSWORD.encode(), USER.encode(), hashlib.sha256).hexdigest()
+OPEN_PATHS = ("/login", "/static/style.css")
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    if (not PASSWORD or request.url.path in OPEN_PATHS
+            or hmac.compare_digest(request.cookies.get(COOKIE, ""), TOKEN)):
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": "login required"}, status_code=401)
+    return RedirectResponse("/login", status_code=303)
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse(os.path.join(ROOT, "app", "static", "login.html"))
+
+
+@app.post("/login")
+def login(request: Request, user: str = Form(""), password: str = Form("")):
+    if not (hmac.compare_digest(user, USER) and hmac.compare_digest(password, PASSWORD)):
+        time.sleep(1)  # slows down guessing
+        return RedirectResponse("/login?failed=1", status_code=303)
+    resp = RedirectResponse("/", status_code=303)
+    resp.set_cookie(COOKIE, TOKEN, max_age=30 * 24 * 3600, httponly=True, samesite="lax",
+                    secure=request.headers.get("x-forwarded-proto") == "https")
+    return resp
 
 
 # ---------- videos and per-video state ----------
@@ -70,6 +122,33 @@ def video_info(video):
 
 def raw_path(video):
     return os.path.join(state_dir(video), "raw_track.csv")
+
+
+def detected_setup_path(video):
+    """The setup the cached detections were made with."""
+    return os.path.join(state_dir(video), "detected_setup.json")
+
+
+def needs_rerun(video, setup):
+    """True when the cached detections no longer fit the setup: another test, or the arena / maze outline moved
+    so far that the detector's crop changed noticeably. Zones, grid and timing never need a new run."""
+    if not os.path.exists(raw_path(video)):
+        return False
+    p = detected_setup_path(video)
+    if not os.path.exists(p):  # detections from before this file existed: the setup saved then is their setup
+        load_setup(video).save(p)
+    before = Setup.load(p)
+    if before.test != setup.test:
+        return True
+    info = video_info(video)
+    shape = (info["height"], info["width"])
+    try:
+        a = np.array(before.calibration().crop_box(shape), float)
+        b = np.array(setup.calibration().crop_box(shape), float)
+    except Exception:  # an unfinished outline: the analysis reports it
+        return False
+    size = np.array([a[2] - a[0], a[3] - a[1]] * 2)
+    return bool((np.abs(a - b) > RERUN_SHIFT * size).any())
 
 
 def load_setup(video):
@@ -153,7 +232,16 @@ async def api_upload(file: UploadFile = File(...)):
 @app.get("/api/info")
 def api_info(video: str):
     check_video(video)
-    return {**video_info(video), "setup": load_setup(video).__dict__, "analysed": os.path.exists(raw_path(video))}
+    setup = load_setup(video)
+    return {**video_info(video), "setup": setup.__dict__, "analysed": os.path.exists(raw_path(video)),
+            "needs_rerun": needs_rerun(video, setup)}
+
+
+@app.get("/api/video")
+def api_video(video: str):
+    """The file itself, for playback in the browser (FileResponse answers range requests, so seeking works)."""
+    check_video(video)
+    return FileResponse(video, media_type="video/mp4")
 
 
 @app.get("/api/frame")
@@ -200,13 +288,15 @@ def api_save_setup(video: str, body: dict):
     check_video(video)
     s = setup_from_body(body)
     s.corners_source = "saved setup of this video"
+    rerun = needs_rerun(video, s)  # before saving: older detections take the previously saved setup as theirs
     s.save(os.path.join(state_dir(video), "setup.json"))
-    return {"saved": True}
+    return {"saved": True, "needs_rerun": rerun}
 
 
 def _run_detector(video, setup):
     job = _jobs[video]
     try:
+        from src.detector import MouseDetector
         dc = CFG["detector"]
         calib = setup.calibration()
         det = MouseDetector(dc["weights"], calib, imgsz=dc["imgsz"], conf=dc["conf"])
@@ -216,6 +306,7 @@ def _run_detector(video, setup):
 
         raw = track_video(video, det, calib, batch=dc["batch"], progress=progress)
         raw.to_csv(raw_path(video), index=False)
+        setup.save(detected_setup_path(video))
         job.update(state="done", done=job.get("total", 0))
     except Exception as e:  # report to the UI instead of dying silently
         job.update(state="error", error=str(e))
@@ -225,8 +316,10 @@ def _run_detector(video, setup):
 def api_run(video: str, body: dict):
     check_video(video)
     with _lock:
-        if _jobs.get(video, {}).get("state") == "running":
-            return {"started": False, "reason": "already running"}
+        busy = [v for v, j in _jobs.items() if j.get("state") == "running"]
+        if busy:
+            return {"started": False, "reason": "already running" if video in busy else
+                    f"{os.path.basename(busy[0])} is being analysed; one video at a time, try again when it is done."}
         setup = setup_from_body(body)
         setup.save(os.path.join(state_dir(video), "setup.json"))
         _jobs[video] = {"state": "running", "done": 0, "total": video_info(video)["frames"], "started": time.time()}
@@ -264,7 +357,13 @@ def api_analyze(video: str, body: dict):
     pf = res["per_frame"]
     frame = frame_at(video, index=int(pf.frame.iloc[len(pf) // 2]))
     whole, zone_header, zone_rows = report.measures_tables(res)
+    zone_cols = [c for c in pf.columns if c.startswith("in_")]
+    px = lambda s: [None if pd.isna(v) else round(float(v), 1) for v in s]  # noqa: E731
     return JSONResponse({
+        # per-frame track of the analysed window, for the playback overlay on the Results tab
+        "track": {"t": [round(float(v), 3) for v in pf.time_s], "x": px(pf.x_px), "y": px(pf.y_px),
+                  "moving": pf.moving.astype(bool).tolist(), "zone_names": [c[3:] for c in zone_cols],
+                  "zones": pf[zone_cols].astype(bool).to_numpy().tolist()},
         "auto_start_s": res["auto_start_s"], "auto_end_s": res["auto_end_s"],
         "summary": {k: nan_safe(v) for k, v in res["summary"].items()},
         "whole": whole, "zone_header": zone_header, "zone_rows": zone_rows,

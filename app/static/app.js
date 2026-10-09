@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const api = async (path, opts = {}) => {
   const r = await fetch(path, opts);
+  if (r.status === 401) location.href = "/login";  // online demo: the session ended
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.headers.get("content-type")?.includes("json") ? r.json() : r;
 };
@@ -10,13 +11,14 @@ const post = (path, body) => api(path, { method: "POST", headers: { "Content-Typ
 
 let changeTimer = null;
 let video = null, info = null, setup = null, geom = null, img = new Image(), scale = 1;
-let analysed = false, dragging = -1, downAt = null, pollTimer = null;
+let analysed = false, needsRerun = false, dragging = -1, downAt = null, pollTimer = null;
 const HANDLE = 8;
 
 // ---------- tabs ----------
 document.querySelectorAll(".tab").forEach((b) => b.onclick = () => {
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));
   document.querySelectorAll(".tab-page").forEach((p) => p.classList.toggle("active", p.id === "tab-" + b.dataset.tab));
+  vid.pause(); rvid.pause();
   if (b.dataset.tab === "validation") loadValidation();
 });
 
@@ -44,22 +46,22 @@ async function openVideo(v) {
   clearTimeout(changeTimer);  // a pending save belongs to the previous video
   analyseSeq++;               // ignore analysis replies for the previous video
   clearResults();
+  vid.pause(); rvid.pause();
   video = v;
+  seekToStart = true;
   const inf = await api("/api/info?video=" + encodeURIComponent(v));
   if (seq !== openSeq) return;  // the user picked another video meanwhile
   info = inf;
   setup = info.setup;
   analysed = info.analysed;
-  $("scrub").max = (info.frames / info.fps).toFixed(2);
-  $("scrub").value = 0;
+  needsRerun = info.needs_rerun;
   showNotice();
   fillForm();
-  await loadFrame(0);
+  await openPlayback(seq);
   if (seq !== openSeq) return;
   await refreshGeometry();
   if (seq !== openSeq) return;
-  $("run-hint").textContent = analysed ? "Detections are cached: changes below update the results instantly."
-                                       : "The detector has not run on this video yet (takes about as long as the video).";
+  showRun();
   if (analysed) analyse(); else clearResults();
 }
 
@@ -137,51 +139,106 @@ function changed() {  // any setup change: redraw now, save + re-analyse shortly
   clearTimeout(changeTimer);
   const v = video, s = JSON.parse(JSON.stringify(setup));  // bind to this video's setup as it is now
   changeTimer = setTimeout(async () => {
-    await post("/api/setup?video=" + encodeURIComponent(v), s);
-    if (analysed && v === video) analyse();
+    const r = await post("/api/setup?video=" + encodeURIComponent(v), s);
+    if (v !== video) return;
+    needsRerun = r.needs_rerun;
+    showRun();
+    if (analysed) analyse();
   }, 400);
 }
 
 // ---------- canvas ----------
-const cv = $("canvas"), ctx = cv.getContext("2d");
-async function loadFrame(t) {
+const cv = $("canvas"), ctx = cv.getContext("2d"), vid = $("vid");
+const rcv = $("res-canvas"), rctx = rcv.getContext("2d"), rvid = $("res-vid");
+// Both tabs play the file itself in a hidden <video> and paint each frame onto their canvas with the overlays.
+// If the browser cannot decode the file, the Setup slider falls back to still frames from the server.
+let playable = false, seekToStart = false;
+function frameSource() {
+  if (playable) return vid.readyState >= 2 ? vid : null;
+  return img.complete && img.naturalWidth ? img : null;
+}
+function loadVideo(v, src) {
+  return new Promise((res) => {
+    v.addEventListener("loadeddata", () => res(true), { once: true });
+    v.addEventListener("error", () => res(false), { once: true });
+    v.src = src;
+  });
+}
+async function openPlayback(seq) {
+  scale = Math.min(1.6, 960 / info.width);
+  for (const c of [cv, rcv]) { c.width = info.width * scale; c.height = info.height * scale; }
+  $("scrub").max = $("res-scrub").max = (info.frames / info.fps).toFixed(2);
+  $("scrub").value = $("res-scrub").value = 0;
+  $("scrub-time").textContent = $("res-time").textContent = "0.0 s";
+  const src = "/api/video?video=" + encodeURIComponent(video);
+  const ok = await loadVideo(vid, src);
+  if (seq !== openSeq) return;
+  playable = ok;
+  $("play").disabled = $("rate").disabled = !ok;
+  const why = ok ? "" : "Playback is not available for this video: the server did not send it (restart run_ui.bat "
+    + "after an update) or this browser cannot play its format. The slider still steps through still frames.";
+  $("play-note").textContent = why;
+  $("res-canvas").classList.toggle("hidden", !ok);
+  document.querySelector(".playback .timeline").classList.toggle("hidden", !ok);
+  $("res-status").textContent = why;
+  if (ok) { rvid.src = src; draw(); } else await loadFrame(0);
+}
+async function loadFrame(t) {  // still frame from the server, for files the browser cannot play
   await new Promise((res) => {
     img.onload = res;
     img.src = `/api/frame?video=${encodeURIComponent(video)}&t=${t}`;
   });
-  scale = Math.min(1.6, 960 / img.width);
-  cv.width = img.width * scale;
-  cv.height = img.height * scale;
   draw();
 }
+function player(p) {  // play / pause / slider / speed for one video: p = {vid, play, scrub, time, rate, draw, still}
+  let held = false;  // the user is dragging the slider; don't move it under their pointer
+  const show = () => {
+    p.time.textContent = p.vid.currentTime.toFixed(1) + " s";
+    if (!held) p.scrub.value = p.vid.currentTime;
+    p.draw();
+  };
+  const loop = () => { show(); if (!p.vid.paused) requestAnimationFrame(loop); };
+  p.vid.addEventListener("play", () => { p.play.textContent = "Pause"; requestAnimationFrame(loop); });
+  p.vid.addEventListener("pause", () => { p.play.textContent = "Play"; show(); });
+  p.vid.addEventListener("seeked", show);
+  p.play.onclick = () => (p.vid.paused ? p.vid.play() : p.vid.pause());
+  p.rate.onchange = () => { p.vid.playbackRate = p.vid.defaultPlaybackRate = +p.rate.value; };
+  p.scrub.onpointerdown = () => { held = true; };
+  p.scrub.onpointerup = () => { held = false; };
+  p.scrub.oninput = () => {
+    p.time.textContent = (+p.scrub.value).toFixed(1) + " s";
+    if (playable) p.vid.currentTime = +p.scrub.value; else if (p.still) p.still(+p.scrub.value);
+  };
+}
 let scrubTimer = null;
-$("scrub").oninput = () => {
-  $("scrub-time").textContent = (+$("scrub").value).toFixed(1) + " s";
-  clearTimeout(scrubTimer);
-  scrubTimer = setTimeout(() => loadFrame(+$("scrub").value), 120);
-};
+player({ vid, play: $("play"), scrub: $("scrub"), time: $("scrub-time"), rate: $("rate"), draw: () => draw(),
+         still: (t) => { clearTimeout(scrubTimer); scrubTimer = setTimeout(() => loadFrame(t), 120); } });
+player({ vid: rvid, play: $("res-play"), scrub: $("res-scrub"), time: $("res-time"), rate: $("res-rate"),
+         draw: () => drawResult() });
 
-async function refreshGeometry() { geom = await post("/api/geometry", setup); draw(); }
+async function refreshGeometry() { geom = await post("/api/geometry", setup); draw(); drawResult(); }
 
-function path(points, close = true) {
-  ctx.beginPath();
-  points.forEach(([x, y], i) => (i ? ctx.lineTo(x * scale, y * scale) : ctx.moveTo(x * scale, y * scale)));
-  if (close) ctx.closePath();
+function path(points, close = true, c = ctx) {
+  c.beginPath();
+  points.forEach(([x, y], i) => (i ? c.lineTo(x * scale, y * scale) : c.moveTo(x * scale, y * scale)));
+  if (close) c.closePath();
+}
+const ZONE_COLOURS = { corners: ["rgba(224,123,0,.18)", "#e07b00"], centre: ["rgba(31,111,209,.22)", "#1f6fd1"],
+                       open: ["rgba(214,32,32,.18)", "#d62020"], closed: ["rgba(46,157,79,.2)", "#2e9d4f"] };
+function drawZones(c) {
+  c.lineWidth = 1; c.strokeStyle = "rgba(160,160,160,.9)";
+  geom.grid.forEach((l) => { path(l, false, c); c.stroke(); });
+  c.lineWidth = 2;
+  for (const [name, polys] of Object.entries(geom.zones)) {
+    [c.fillStyle, c.strokeStyle] = ZONE_COLOURS[name];
+    polys.forEach((p) => { path(p, true, c); c.fill(); c.stroke(); });
+  }
 }
 function draw() {
-  if (!img.complete || !setup) return;
-  ctx.drawImage(img, 0, 0, cv.width, cv.height);
-  const colours = { corners: ["rgba(224,123,0,.18)", "#e07b00"], centre: ["rgba(31,111,209,.22)", "#1f6fd1"],
-                    open: ["rgba(214,32,32,.18)", "#d62020"], closed: ["rgba(46,157,79,.2)", "#2e9d4f"] };
-  if (geom && dragging < 0) {
-    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(160,160,160,.9)";
-    geom.grid.forEach((l) => { path(l, false); ctx.stroke(); });
-    ctx.lineWidth = 2;
-    for (const [name, polys] of Object.entries(geom.zones)) {
-      [ctx.fillStyle, ctx.strokeStyle] = colours[name];
-      polys.forEach((p) => { path(p); ctx.fill(); ctx.stroke(); });
-    }
-  }
+  const src = frameSource();
+  if (!src || !setup) return;
+  ctx.drawImage(src, 0, 0, cv.width, cv.height);
+  if (geom && dragging < 0) drawZones(ctx);
   const hs = handles();
   ctx.strokeStyle = "#d62020"; ctx.lineWidth = 2;
   if (setup.test !== "epm") { path(setup.corners_px); ctx.stroke(); }
@@ -237,9 +294,22 @@ cv.onmouseup = (e) => {
 };
 
 // ---------- run + results ----------
+// The detector runs once per video. Everything else is recalculated from its cached detections, so the button is
+// only offered before the first run, or when the arena / maze outline moved so far that the detections may miss.
+function showRun() {
+  $("run").classList.toggle("hidden", analysed && !needsRerun);
+  $("run").textContent = analysed ? "Run analysis again" : "Run analysis";
+  $("run-hint").textContent = !analysed
+    ? "The detector has not run on this video yet (takes about as long as the video, longer online)."
+    : needsRerun
+      ? "The outline moved since the detector ran: run it again so the mouse is searched in the right place. "
+        + "Until then the results use the earlier detections."
+      : "Detections are cached: changes below update the results instantly.";
+}
 $("run").onclick = async () => {
   readForm();
-  await post("/api/run?video=" + encodeURIComponent(video), setup);
+  const r = await post("/api/run?video=" + encodeURIComponent(video), setup);
+  if (!r.started && r.reason !== "already running") { alertBox(r.reason); return; }
   $("run").disabled = true;
   $("progress").classList.remove("hidden");
   poll();
@@ -258,7 +328,8 @@ async function poll() {
   $("progress").classList.add("hidden");
   if (s.state === "error") { alertBox("The detector failed: " + s.error); return; }
   analysed = true;
-  $("run-hint").textContent = "Detections are cached: changes below update the results instantly.";
+  needsRerun = false;
+  showRun();
   analyse();
   loadVideos(video);
 }
@@ -268,6 +339,8 @@ function clearResults() {
   $("results").classList.add("hidden");
   $("results-empty").classList.remove("hidden");
   $("auto-times").textContent = "";
+  track = null;
+  $("start_s").placeholder = $("end_s").placeholder = "auto";  // the auto times belonged to the previous video
 }
 function table(el, header, rows) {
   el.innerHTML = (header ? "<tr>" + header.map((h) => `<th>${h}</th>`).join("") + "</tr>" : "")
@@ -296,6 +369,49 @@ async function analyse() {
   $("dl-pdf").href = "/api/export" + q + "pdf";
   $("results-empty").classList.add("hidden");
   $("results").classList.remove("hidden");
+  track = r.track;
+  if (seekToStart) { seekToStart = false; rvid.currentTime = r.summary.start_s; }  // open the player where the test begins
+  drawResult();
+}
+
+// ---------- results playback: the video with the zones and the tracked position ----------
+let track = null;  // per-frame track of the analysed window, from /api/analyze
+const TRAIL_S = 2;
+function trackIndex(t) {  // last tracked frame at or before t, or -1
+  let lo = 0, hi = track.t.length - 1, k = -1;
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1;
+    if (track.t[m] <= t) { k = m; lo = m + 1; } else hi = m - 1;
+  }
+  return k;
+}
+function drawResult() {
+  if (!playable || rvid.readyState < 2) return;
+  rctx.drawImage(rvid, 0, 0, rcv.width, rcv.height);
+  if (geom) drawZones(rctx);
+  if (!track) { $("res-status").textContent = ""; return; }
+  const t = rvid.currentTime, k = trackIndex(t), n = track.t.length - 1;
+  if (k < 0 || (k === n && t > track.t[n] + 0.1)) {
+    $("res-status").textContent =
+      `${t.toFixed(1)} s · outside the analysed window (${track.t[0].toFixed(1)}–${track.t[n].toFixed(1)} s)`;
+    return;
+  }
+  rctx.strokeStyle = "#ffd400"; rctx.lineWidth = 2; rctx.beginPath();
+  let pen = false;
+  for (let i = trackIndex(t - TRAIL_S) + 1; i <= k; i++) {  // the last two seconds of the path
+    if (track.x[i] == null) { pen = false; continue; }
+    const X = track.x[i] * scale, Y = track.y[i] * scale;
+    if (pen) rctx.lineTo(X, Y); else rctx.moveTo(X, Y);
+    pen = true;
+  }
+  rctx.stroke();
+  if (track.x[k] == null) { $("res-status").textContent = `${t.toFixed(1)} s · mouse not found`; return; }
+  rctx.beginPath(); rctx.arc(track.x[k] * scale, track.y[k] * scale, 6, 0, 2 * Math.PI);
+  rctx.fillStyle = track.moving[k] ? "#ffd400" : "#ffffff"; rctx.fill();
+  rctx.lineWidth = 2; rctx.strokeStyle = "#1d2433"; rctx.stroke();
+  const zones = track.zone_names.filter((_, j) => track.zones[k][j]);
+  $("res-status").textContent = `${t.toFixed(1)} s · in ${zones.join(" + ") || "no zone"} · `
+    + (track.moving[k] ? "moving" : "not moving");
 }
 
 // ---------- validation ----------

@@ -31,6 +31,11 @@ main { padding: 16px; }
 canvas { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; }
 .timeline { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .timeline input[type=range] { flex: 1; }
+.timeline .play { min-width: 56px; }
+.timeline .rate { width: auto; padding: 1px 2px; font-size: 12px; }
+.playback { max-width: 820px; margin-top: 12px; }
+#res-canvas { cursor: default; }
+.hint.warn { color: #b54708; }
 .progress { position: relative; height: 18px; background: #e4e7ec; border-radius: 9px; margin: 8px 0; overflow: hidden; }
 .progress div { height: 100%; width: 0; background: var(--accent); }
 .progress span { position: absolute; inset: 0; text-align: center; font-size: 12px; line-height: 18px; }
@@ -47,3 +52,7 @@ td:not(:first-child), th:not(:first-child) { text-align: right; font-variant-num
 .card b { font-size: 20px; display: block; }
 #val-scatter { max-width: 900px; width: 100%; display: block; margin-bottom: 12px; }
 #start_s, #end_s { width: 104px !important; }
+.login { margin: 48px auto; }
+.login input:not([type]), .login input[type=password] { flex: 1; min-width: 0; }
+.login .row > label:first-child { min-width: 72px; }
+.login button { margin-top: 8px; width: 100%; }

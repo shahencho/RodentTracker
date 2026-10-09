@@ -1,0 +1,2 @@
+# Shell scripts run on Linux (and are piped to ssh from Windows): always LF
+*.sh text eol=lf

@@ -25,12 +25,15 @@ vs the DLCAnalyzer reference on 14 Sturman videos.
 `scripts/seed_ui_state.py` pre-loads the YSMU and Sturman setups and cached detections, so the demo opens with
 results. The command-line equivalent is `scripts/analyze_video.py`.
 
+Online demo (DigitalOcean droplet, with a login): [deploy/README.md](deploy/README.md).
+
 ## Layout
 
 | Path | Purpose |
 |---|---|
 | `src/` | calibration, detector, tracking, zones, metrics, analysis, report (plots, CSV, PDF) |
 | `app/` | demo UI: FastAPI server + one static HTML/JS page |
+| `deploy/` | online demo on the droplet: setup, deploy, pm2, nginx, demo data list |
 | `scripts/` | entry points |
 | `data/` | videos and answer keys (gitignored) |
 | `outputs/` | tracks, metrics CSVs, reports (gitignored) |
