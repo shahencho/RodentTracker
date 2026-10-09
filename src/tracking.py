@@ -62,15 +62,33 @@ def track_video(video, detector, calib, batch=16, progress=None):
     return df
 
 
-def auto_start_s(df, hand_px=2500, search_s=60, settle_s=1.0):
-    """First time after the experimenter's hand has left the arena (searched in the first minute)."""
+def auto_start_s(df, hand_px=2500, search_s=60, settle_s=1.0, present_s=1.0):
+    """Start of the test: after the experimenter's hand has left the arena (searched in the first minute) and
+    once the mouse has been detected continuously for present_s."""
     early = df[df.time_s <= search_s]
     hand = early[early.foreground_px > hand_px]
-    return 0.0 if hand.empty else float(hand.time_s.max() + settle_s)
+    t0 = 0.0 if hand.empty else float(hand.time_s.max() + settle_s)
+    fps = df.attrs.get("fps") or 1 / max(df.time_s.diff().median(), 1e-6)
+    need = max(1, int(round(present_s * fps)))
+    after = df[df.time_s >= t0]
+    seen = after.x_px.notna().to_numpy().astype(int)
+    run = np.convolve(seen, np.ones(need, int), "valid")  # detections in each window of `need` frames
+    hit = np.flatnonzero(run == need)
+    return float(after.time_s.iloc[hit[0]]) if len(hit) else t0
 
 
-def clean_track(df, calib, max_speed_cm_s=100.0, max_gap_s=0.5, smooth_s=0.2):
-    """Add cm coordinates, drop impossible jumps, fill short gaps, smooth. Keeps raw columns for QA."""
+def auto_end_s(df, hand_px=2500, search_s=60, settle_s=1.0):
+    """End of the test: just before the experimenter's hand comes back (searched in the last minute),
+    otherwise the end of the video."""
+    end = float(df.time_s.iloc[-1])
+    late = df[df.time_s >= end - search_s]
+    hand = late[late.foreground_px > hand_px]
+    return end if hand.empty else max(float(df.time_s.iloc[0]), float(hand.time_s.min() - settle_s))
+
+
+def clean_track(df, calib, max_speed_cm_s=100.0, max_gap_s=0.5, smooth_s=0.0):
+    """Add cm coordinates, drop impossible jumps, fill short gaps and optionally median-smooth (off by default:
+    the validated DLCAnalyzer comparison used the unsmoothed track). Keeps raw columns for QA."""
     fps = df.attrs["fps"]
     df = df.copy()
     xy = calib.to_cm(df[["x_px", "y_px"]].fillna(0).to_numpy())
@@ -95,8 +113,9 @@ def clean_track(df, calib, max_speed_cm_s=100.0, max_gap_s=0.5, smooth_s=0.2):
     limit = max(1, int(round(max_gap_s * fps)))
     x = x.interpolate(limit=limit, limit_area="inside")
     y = y.interpolate(limit=limit, limit_area="inside")
-    win = max(1, int(round(smooth_s * fps)) | 1)  # odd window
-    df["x_cm"] = x.rolling(win, center=True, min_periods=1).median()
-    df["y_cm"] = y.rolling(win, center=True, min_periods=1).median()
-    df.loc[x.isna(), ["x_cm", "y_cm"]] = np.nan
+    if smooth_s > 0:
+        win = max(1, int(round(smooth_s * fps)) | 1)  # odd window
+        x = x.rolling(win, center=True, min_periods=1).median().where(x.notna())
+        y = y.rolling(win, center=True, min_periods=1).median().where(y.notna())
+    df["x_cm"], df["y_cm"] = x, y
     return df

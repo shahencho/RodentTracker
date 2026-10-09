@@ -7,9 +7,15 @@ Mirrors the README single-file OFT example (R/DLCAnalyzer_Functions_final.R):
 Check: on example/OFT/DLC_Data/OFT_3.csv the README reports raw.distance 4008.34, distance.moving 3078.99,
 center.total.time 79.8, center.transitions 58.
 """
+import os
+import sys
+
 import numpy as np
 import pandas as pd
 from matplotlib.path import Path
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from src.metrics import avgbool  # noqa: E402
 
 CORNERS = ["tl", "tr", "br", "bl"]
 
@@ -22,15 +28,6 @@ def read_dlc(path):
 def polygon_area(p):
     x, y = p[:, 0], p[:, 1]
     return 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
-
-
-def avgbool(x, window):
-    """R avgbool: mean over +-window entries (clipped at the ends) > 0.5."""
-    x = np.asarray(x, float)
-    c = np.r_[0, np.cumsum(x)]
-    i = np.arange(len(x))
-    lo, hi = np.maximum(0, i - window), np.minimum(len(x), i + window + 1)
-    return (c[hi] - c[lo]) / (hi - lo) > 0.5
 
 
 def corner_medians(data):
