@@ -118,3 +118,23 @@ ANY-maze style names and DLCAnalyzer rules.
   - UI: test selector, 4-tips / 12-corners modes, length and width.
 
   Checked in the browser: `experiments/ui_check_epm.py` 12/12, and the open-field check 20/20.
+
+**Paused 10 Oct (resume here)**
+- **EPM validation:** 10 of 24 videos tracked and cached in `outputs/validation/mouse_det_v2_epm/` (EPM_2–10 and EPM_17), each with `_raw.csv` and `_candidates.csv`. All 24 videos are now complete on disk; EPM_1, 5 and 21 were re-downloaded after the throttled first download.
+- **To resume**, re-run the same command. Cached videos are skipped, so only the remaining 14 are tracked (about 17–24 min each, ~5 h):
+  `.venv\Scripts\python experiments\validate_epm.py models\mouse_det_v2.pt`
+- **Then re-validate the open field with the new box choice** (~3 h), and compare the engine:
+  `.venv\Scripts\python experiments\validate_sturman.py models\mouse_det_v2.pt`
+  `.venv\Scripts\python experiments\engine_vs_reference.py`
+
+  The open-field tracks made with the old "most confident box" rule are kept in `outputs/validation/mouse_det_v2_oldselect/`. `mouse_det_v2/per_video.csv` still holds the old-rule results until the re-run overwrites it.
+- **First EPM numbers:**
+
+  | Video | Open-arm time, ours vs ref | Distance, ours vs ref |
+  |---|---|---|
+  | EPM_8 | 60.1 vs 68.3 s | 2163 vs 2211 cm |
+  | EPM_9 | 198.1 vs 205.8 s | 2970 vs 3112 cm |
+  | EPM_17 | 45.4 vs 68.9 s | 2538 vs 2499 cm |
+
+  Open-arm time tends to be low. Check whether this is a consistent bias once all videos are in.
+- **After validation:** add an EPM section to the Validation page, update `docs/project_status.md`, commit.
