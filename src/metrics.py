@@ -48,6 +48,23 @@ def max_speed(xy, t, min_distance_cm=2.0):
     return float(np.max((cum[j[ok]] - cum[i]) / np.maximum(dt, 1e-9)))
 
 
+def min_move_distance(xy, min_move):
+    """Path length counting a move only once the point is min_move away from the last counted point, so jitter
+    while resting adds nothing. Approximates ANY-maze's (unpublished) size-scaled smoothing; fitted on 1 YSMU video."""
+    total, anchor = 0.0, None
+    for p in np.asarray(xy, float):
+        if np.isnan(p).any():
+            continue
+        if anchor is None:
+            anchor = p
+            continue
+        d = float(np.hypot(*(p - anchor)))
+        if d >= min_move:
+            total += d
+            anchor = p
+    return total
+
+
 def zone_measures(inside, step, t, fps, integration_period):
     """ANY-maze style measures for one zone. Time and distance use raw frames; entries, exits, latency and
     visits use the smoothed flag (as DLCAnalyzer counts transitions)."""
@@ -68,7 +85,7 @@ def zone_measures(inside, step, t, fps, integration_period):
 
 
 def open_field(xy_cm, t, fps, zones, movement_cutoff=5.0, integration_period=5, immobile_min_s=2.0,
-               max_speed_min_cm=2.0, bin_s=60.0):
+               max_speed_min_cm=2.0, bin_s=60.0, anymaze_min_move_cm=4.0):
     """xy_cm: (N, 2) floor positions for the analysis window (NaN where the mouse was not found).
     zones: a src.zones.ZoneSpec. Returns (summary dict, zone table, per-time-bin table, per-frame table)."""
     xy_cm = np.asarray(xy_cm, float)
@@ -87,6 +104,7 @@ def open_field(xy_cm, t, fps, zones, movement_cutoff=5.0, integration_period=5, 
         "frames_tracked_pct": round(100 * float(valid.mean()), 1),
         "total_distance_cm": round(float(step.sum()), 1),
         "distance_moving_cm": round(float(step[moving].sum()), 1),
+        "distance_anymaze_cm": round(min_move_distance(xy_cm, anymaze_min_move_cm), 1),
         "average_speed_cm_s": round(float(step.sum() / duration), 2),
         "max_speed_cm_s": round(max_speed(xy_cm, t, max_speed_min_cm), 1),
         "time_moving_s": round(float(moving.sum() / fps), 1),

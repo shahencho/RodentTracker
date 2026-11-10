@@ -18,6 +18,7 @@ open_field:
   integration_period_frames: 5  # ... after a +-5 frame majority vote; zone transitions use the same smoothing
   immobile_min_s: 2             # an immobile episode is not moving for at least this long
   max_speed_min_cm: 2           # max speed is measured over at least this much path (ignores jitter)
+  anymaze_min_move_cm: 4        # "ANY-maze style" distance counts a move only after this much displacement (fitted on 1 YSMU video)
   corner_fraction: 0.2          # corner zones: squares this fraction of the arena side
   bin_s: 60                     # time bins for the per-minute table
 

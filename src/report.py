@@ -17,6 +17,7 @@ LABELS = {
     "open_time_pct": ("Time in open arms", "% of arm time"), "open_entries_pct": ("Open-arm entries", "% of arm entries"),
     "arm_entries": ("Total arm entries", ""),
     "total_distance_cm": ("Total distance travelled", "cm"), "distance_moving_cm": ("Distance while moving", "cm"),
+    "distance_anymaze_cm": ("Distance (ANY-maze style)", "cm"),
     "average_speed_cm_s": ("Average speed", "cm/s"), "max_speed_cm_s": ("Maximum speed", "cm/s"),
     "time_moving_s": ("Time moving", "s"), "time_immobile_s": ("Time immobile", "s"),
     "immobile_episodes": ("Immobile episodes", ""), "line_crossings": ("Line crossings", ""),

@@ -1,4 +1,5 @@
-// RodentTracker demo UI: one page, three tabs. Plain JavaScript, no build step.
+// RodentTracker demo UI: one page, tabs in ANY-maze order. Plain JavaScript, no build step.
+// Planned features (placeholders, Roadmap) come from planned.js.
 const $ = (id) => document.getElementById(id);
 const api = async (path, opts = {}) => {
   const r = await fetch(path, opts);
@@ -15,12 +16,73 @@ let analysed = false, needsRerun = false, dragging = -1, downAt = null, pollTime
 const HANDLE = 8;
 
 // ---------- tabs ----------
-document.querySelectorAll(".tab").forEach((b) => b.onclick = () => {
-  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));
-  document.querySelectorAll(".tab-page").forEach((p) => p.classList.toggle("active", p.id === "tab-" + b.dataset.tab));
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll(".tab-page").forEach((p) => p.classList.toggle("active", p.id === "tab-" + name));
   vid.pause(); rvid.pause();
-  if (b.dataset.tab === "validation") loadValidation();
-});
+  if (name === "validation") loadValidation();
+  if (name === "tests") loadTests();
+}
+document.querySelectorAll(".tab").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+
+// ---------- planned features: placeholders in their slots, the Roadmap tab, the show/hide switch ----------
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+function renderPlanned() {
+  document.querySelectorAll("[data-planned-slot]").forEach((el) => {
+    const items = PLANNED.filter((f) => f.slot === el.dataset.plannedSlot);
+    if (el.tagName === "SELECT") {  // planned test types: disabled options
+      el.insertAdjacentHTML("beforeend", items.map((f) =>
+        `<option disabled class="planned-option" data-planned-id="${f.id}" title="${esc(f.what)}">`
+        + `${esc(f.name)} (planned)</option>`).join(""));
+      return;
+    }
+    el.innerHTML = items.map((f) =>
+      `<div class="planned" data-planned-id="${f.id}" title="${esc(f.what)}">`
+      + `<span class="name">${esc(f.name)}</span><span class="badge ${f.phase}">${PHASES[f.phase].label}</span>`
+      + `<div class="what">${esc(f.what)}</div></div>`).join("");
+  });
+  // a click only expands the description; it never changes the setup
+  document.querySelectorAll(".planned").forEach((p) => p.onclick = () => p.classList.toggle("open"));
+  $("roadmap").innerHTML = Object.entries(PHASES).map(([key, ph]) => {
+    const rows = PLANNED.filter((f) => f.phase === key);
+    return `<h3><span class="badge ${key}">${ph.label}</span> ${esc(ph.title)}</h3><table>`
+      + "<tr><th>Feature</th><th>Where</th><th>What it will do</th></tr>"
+      + rows.map((f) => `<tr data-planned-id="${f.id}"><td>${esc(f.name)}</td><td>${slotName(f.slot)}</td>`
+        + `<td>${esc(f.what)}</td></tr>`).join("") + "</table>";
+  }).join("");
+}
+function slotName(slot) {
+  const [tab, section] = slot.split(".");
+  const names = { top: "", source: "Video source", test: "Test type", apparatus: "Apparatus", tracking: "Tracking",
+                  zones: "Zones", behaviour: "Behaviour", testing: "Testing", reports: "Reports" };
+  return [tab[0].toUpperCase() + tab.slice(1), names[section]].filter(Boolean).join(" › ");
+}
+function setShowPlanned(on) {
+  document.body.classList.toggle("hide-planned", !on);
+  $("show-planned").checked = on;
+  if (!on && document.querySelector(".tab.active.planned-tab")) showTab("protocol");  // its tab just disappeared
+  try { localStorage.setItem("showPlanned", on ? "1" : "0"); } catch (e) { /* storage blocked: keep the default */ }
+}
+$("show-planned").onchange = () => setShowPlanned($("show-planned").checked);
+renderPlanned();
+try { setShowPlanned(localStorage.getItem("showPlanned") !== "0"); } catch (e) { setShowPlanned(true); }
+
+// ---------- tests: one per video until the experiment layer (Phase B) ----------
+async function loadTests() {
+  const vids = await api("/api/videos");
+  table($("tests-table"), ["Test", "Video", "Animal", "Stage", "Trial", "Status"],
+    vids.map((v, i) => [i + 1, v.video.replace(/^data\//, ""), "–", "–", "–",
+                        v.analysed ? '<span class="ok">Analysed</span>' : "Not run"]));
+  $("tests-table").querySelectorAll("tr").forEach((tr, i) => {
+    if (!i) return;  // header
+    const v = vids[i - 1];
+    tr.dataset.video = v.video;
+    tr.onclick = () => {  // switch at once; the video loads in the new tab
+      showTab(v.analysed ? "results" : "protocol");
+      if (v.video !== video) { $("video").value = v.video; openVideo(v.video); }
+    };
+  });
+}
 
 // ---------- videos ----------
 async function loadVideos(select) {
@@ -87,8 +149,8 @@ function showNotice() {
 // ---------- form <-> setup ----------
 function fillForm() {
   $("test").value = setup.test;
-  $("of-settings").classList.toggle("hidden", setup.test === "epm");
-  $("epm-settings").classList.toggle("hidden", setup.test !== "epm");
+  document.querySelectorAll(".of-only").forEach((el) => el.classList.toggle("hidden", setup.test === "epm"));
+  document.querySelectorAll(".epm-only").forEach((el) => el.classList.toggle("hidden", setup.test !== "epm"));
   document.querySelector(`input[name=maze_mode][value=${setup.maze_mode}]`).checked = true;
   $("arm_span_cm").value = setup.arm_span_cm;
   $("arm_width_cm").value = setup.arm_width_cm;
@@ -268,18 +330,22 @@ function inside(pt, poly) {
   }
   return c;
 }
-cv.onmousedown = (e) => {
+// Pointer capture: a drag released outside the image still ends (and is saved); points stay inside the image.
+cv.onpointerdown = (e) => {
   const p = evPoint(e);
   downAt = p;
   dragging = handles().findIndex(({ pt: [x, y] }) => Math.hypot(x - p[0], y - p[1]) * scale <= HANDLE + 4);
+  if (dragging >= 0) cv.setPointerCapture(e.pointerId);
 };
-cv.onmousemove = (e) => {
+cv.onpointermove = (e) => {
   if (dragging < 0) return;
   const [x, y] = evPoint(e), pt = handles()[dragging].pt;
-  pt[0] = x; pt[1] = y;  // handles() returns the live arrays inside setup
+  pt[0] = Math.max(0, Math.min(info.width, x));  // handles() returns the live arrays inside setup
+  pt[1] = Math.max(0, Math.min(info.height, y));
   draw();
 };
-cv.onmouseup = (e) => {
+cv.onpointercancel = () => { if (dragging >= 0) { dragging = -1; changed(); } };
+cv.onpointerup = (e) => {
   const p = evPoint(e);
   if (dragging >= 0) { dragging = -1; changed(); return; }
   if (downAt && Math.hypot(p[0] - downAt[0], p[1] - downAt[1]) * scale < 4 && geom) {  // click: toggle a grid square
@@ -304,7 +370,7 @@ function showRun() {
     : needsRerun
       ? "The outline moved since the detector ran: run it again so the mouse is searched in the right place. "
         + "Until then the results use the earlier detections."
-      : "Detections are cached: changes below update the results instantly.";
+      : "Detections are cached: changes above update the results instantly.";
 }
 $("run").onclick = async () => {
   readForm();

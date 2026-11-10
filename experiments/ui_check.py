@@ -82,7 +82,7 @@ try:
         base_centre = centre_time(page)
 
         # 4. Centre zone 30% -> results update
-        page.click("button[data-tab=setup]")
+        page.click("button[data-tab=protocol]")
         page.fill("#center_percent", "30")
         page.dispatch_event("#center_percent", "change")
         wait_results(page, base_centre)

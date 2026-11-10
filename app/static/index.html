@@ -10,43 +10,45 @@
 <header>
   <strong>RodentTracker</strong> <span class="muted">open field · plus maze · one mouse</span>
   <nav>
-    <button class="tab active" data-tab="setup">Setup</button>
+    <button class="tab active" data-tab="protocol">Protocol</button>
+    <button class="tab planned-tab" data-tab="experiment">Experiment</button>
+    <button class="tab" data-tab="tests">Tests</button>
     <button class="tab" data-tab="results">Results</button>
+    <button class="tab planned-tab" data-tab="data">Data</button>
+    <span class="nav-sep"></span>
     <button class="tab" data-tab="validation">Validation</button>
+    <button class="tab planned-tab" data-tab="roadmap">Roadmap</button>
   </nav>
+  <label class="show-planned"><input type="checkbox" id="show-planned" checked> Show planned features</label>
 </header>
 
 <main>
-  <!-- SETUP -->
-  <section id="tab-setup" class="tab-page active">
+  <!-- PROTOCOL -->
+  <section id="tab-protocol" class="tab-page active">
     <aside class="panel">
-      <h3>Video</h3>
+      <div class="planned-list" data-planned-slot="protocol.top"></div>
+
+      <h2 class="group">Apparatus</h2>
+      <h3>Video source</h3>
       <select id="video"></select>
       <label class="upload">Upload .mp4 <input type="file" id="upload" accept=".mp4" hidden></label>
+      <div class="planned-list" data-planned-slot="protocol.source"></div>
 
       <h3>Test</h3>
-      <select id="test">
+      <select id="test" data-planned-slot="protocol.test">
         <option value="open_field">Open field</option>
         <option value="epm">Elevated plus maze</option>
       </select>
+      <div class="planned-list" data-planned-slot="protocol.apparatus"></div>
 
-      <div id="of-settings">
+      <div class="of-only">
       <h3>Arena</h3>
       <div class="row"><label>Width</label><input type="number" id="width_cm" step="0.5" min="1"> cm</div>
       <div class="row"><label>Height</label><input type="number" id="height_cm" step="0.5" min="1"> cm</div>
       <div class="row"><label>Grid</label><input type="number" id="grid_cm" step="1" min="1"> cm</div>
-
-      <h3>Centre zone</h3>
-      <div class="row"><label><input type="radio" name="center_mode" value="percent"> % of side</label>
-        <input type="number" id="center_percent" step="1" min="1" max="100"></div>
-      <div class="row"><label><input type="radio" name="center_mode" value="cm"> cm from walls</label>
-        <input type="number" id="center_cm" step="0.5" min="0"></div>
-      <p class="hint">Click a grid square on the image to add it to, or remove it from, the centre zone.</p>
-      <button id="reset-zones" class="small">Reset to default (50%, no clicked squares)</button>
-      <div class="row"><label><input type="checkbox" id="corner_zones"> Corner zones (20% of side)</label></div>
       </div>
 
-      <div id="epm-settings" class="hidden">
+      <div class="epm-only hidden">
       <h3>Maze</h3>
       <div class="row"><label><input type="radio" name="maze_mode" value="tips"> 4 arm tips + width</label></div>
       <div class="row"><label><input type="radio" name="maze_mode" value="corners"> 12 corners</label></div>
@@ -55,14 +57,42 @@
       <p class="hint" id="maze-hint"></p>
       </div>
 
+      <h2 class="group">Tracking</h2>
+      <h3>Animal</h3>
+      <p class="hint">One mouse per video. The detector finds it by itself: no colour or contrast settings needed.</p>
+      <div class="planned-list" data-planned-slot="protocol.tracking"></div>
+
+      <h2 class="group">Behaviour</h2>
+      <h3>Zones</h3>
+      <div class="of-only">
+      <div class="row"><label><input type="radio" name="center_mode" value="percent"> Centre: % of side</label>
+        <input type="number" id="center_percent" step="1" min="1" max="100"></div>
+      <div class="row"><label><input type="radio" name="center_mode" value="cm"> Centre: cm from walls</label>
+        <input type="number" id="center_cm" step="0.5" min="0"></div>
+      <p class="hint">Click a grid square on the image to add it to, or remove it from, the centre zone.</p>
+      <button id="reset-zones" class="small">Reset to default (50%, no clicked squares)</button>
+      <div class="row"><label><input type="checkbox" id="corner_zones"> Corner zones (20% of side)</label></div>
+      </div>
+      <p class="hint epm-only hidden">Open arms, closed arms and the centre are built from the maze outline.</p>
+      <div class="planned-list" data-planned-slot="protocol.zones"></div>
+      <h3>Movement</h3>
+      <p class="hint">Moving = faster than 5 cm/s (±5-frame smoothing); immobile = not moving for at least 2 s.</p>
+      <div class="planned-list" data-planned-slot="protocol.behaviour"></div>
+
+      <h2 class="group">Testing</h2>
       <h3>Timing</h3>
       <div class="row"><label>Start</label><input type="number" id="start_s" step="0.1" placeholder="auto"> s
         <button class="small" data-auto="start_s">auto</button></div>
       <div class="row"><label>End</label><input type="number" id="end_s" step="0.1" placeholder="auto"> s
         <button class="small" data-auto="end_s">auto</button></div>
       <p class="hint" id="auto-times"></p>
+      <div class="planned-list" data-planned-slot="protocol.testing"></div>
 
-      <h3>Analysis</h3>
+      <h2 class="group">Reports</h2>
+      <p class="hint">Whole-test and zone measures, track plot, heat map and per-minute chart; CSV and PDF.</p>
+      <div class="planned-list" data-planned-slot="protocol.reports"></div>
+
+      <h2 class="group">Analysis</h2>
       <button id="run" class="primary">Run analysis</button>
       <div id="progress" class="progress hidden"><div></div><span></span></div>
       <p class="hint" id="run-hint"></p>
@@ -86,9 +116,50 @@
     </div>
   </section>
 
+  <!-- EXPERIMENT (Phase B) -->
+  <section id="tab-experiment" class="tab-page">
+    <div class="notice planned-notice">Today every video is analysed on its own. <b>Phase B</b> groups videos into an
+      experiment with animals and treatment groups, like ANY-maze. Below is a preview of the layout.</div>
+    <div class="planned-list wide" data-planned-slot="experiment"></div>
+    <div class="preview" aria-disabled="true">
+      <div>
+        <h3>Experiment title</h3>
+        <input type="text" disabled placeholder="e.g. Open field pilot">
+        <h3>Experiment notes</h3>
+        <textarea disabled rows="6" placeholder="Design, doses, anything to remember"></textarea>
+      </div>
+      <div>
+        <div class="toolbar"><button disabled>Add animals</button><button disabled>Import animals</button>
+          <button disabled>View treatments</button></div>
+        <table>
+          <tr><th>Animal</th><th>Status</th><th>Treatment</th></tr>
+          <tr><td>1</td><td>Normal</td><td>A – saline</td></tr>
+          <tr><td>2</td><td>Normal</td><td>B – drug</td></tr>
+          <tr><td>3</td><td>…</td><td>…</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTS -->
+  <section id="tab-tests" class="tab-page">
+    <div class="toolbar">
+      <h2>Tests</h2>
+      <button disabled class="planned-ctl" title="Phase B">Run all tests</button>
+    </div>
+    <p class="hint">One test per video for now. Click a test to open its results (or its protocol if it has not been
+      analysed yet). Animal, stage and trial come with Phase B.</p>
+    <table id="tests-table" class="clickable"></table>
+    <div class="planned-list wide" data-planned-slot="tests"></div>
+  </section>
+
   <!-- RESULTS -->
   <section id="tab-results" class="tab-page">
-    <div id="results-empty" class="notice">Choose a video and run the analysis on the Setup tab.</div>
+    <div class="group-strip">
+      <span class="muted">Results across animals:</span>
+      <div class="planned-list inline" data-planned-slot="results"></div>
+    </div>
+    <div id="results-empty" class="notice">Choose a video and run the analysis on the Protocol tab.</div>
     <div id="results" class="hidden">
       <div class="toolbar">
         <h2 id="results-title"></h2>
@@ -124,6 +195,23 @@
     </div>
   </section>
 
+  <!-- DATA (Phase C) -->
+  <section id="tab-data" class="tab-page">
+    <div class="notice planned-notice">Today each test is downloaded on its own from the Results tab. <b>Phase C</b>
+      puts every test of the experiment in one table, like the ANY-maze Data page. Below is a preview.</div>
+    <div class="planned-list wide" data-planned-slot="data"></div>
+    <div class="toolbar"><button disabled>Select columns</button><button disabled>Save CSV</button>
+      <button disabled>Save Excel</button></div>
+    <div class="preview" aria-disabled="true">
+      <table>
+        <tr><th>Test</th><th>Animal</th><th>Treatment</th><th>Stage</th><th>Trial</th><th>Distance (cm)</th>
+          <th>Centre time (s)</th><th>Centre entries</th><th>Time immobile (s)</th></tr>
+        <tr><td>1</td><td>1</td><td>A – saline</td><td>Training</td><td>1</td><td>…</td><td>…</td><td>…</td><td>…</td></tr>
+        <tr><td>2</td><td>2</td><td>B – drug</td><td>Training</td><td>1</td><td>…</td><td>…</td><td>…</td><td>…</td></tr>
+      </table>
+    </div>
+  </section>
+
   <!-- VALIDATION -->
   <section id="tab-validation" class="tab-page">
     <h2>Validation against a published reference</h2>
@@ -135,7 +223,16 @@
     <img id="val-scatter" alt="scatter plots">
     <table id="val-table"></table>
   </section>
+
+  <!-- ROADMAP -->
+  <section id="tab-roadmap" class="tab-page">
+    <h2>Roadmap</h2>
+    <p>Everything ANY-maze users will look for that is not built yet, and when it is planned. Grey rows with a badge
+      on the other tabs are these features.</p>
+    <div id="roadmap"></div>
+  </section>
 </main>
+<script src="/static/planned.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

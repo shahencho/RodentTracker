@@ -85,10 +85,11 @@ def analyze(raw, fps, setup, cfg):
 
     zones = setup.zones(oc["corner_fraction"], calib)
     measure = epm.epm_measures if setup.test == "epm" else open_field
+    extra = {} if setup.test == "epm" else {"anymaze_min_move_cm": oc.get("anymaze_min_move_cm", 4.0)}
     summary, table, per_bin, per_frame = measure(
         win[["x_cm", "y_cm"]].to_numpy(), win.time_s.to_numpy(), fps, zones,
         oc["movement_cutoff_cm_s"], oc["integration_period_frames"], oc["immobile_min_s"],
-        oc["max_speed_min_cm"], oc["bin_s"])
+        oc["max_speed_min_cm"], oc["bin_s"], **extra)
     per_frame.insert(0, "frame", win.frame.to_numpy())
     per_frame["x_px"], per_frame["y_px"] = win.x_px.to_numpy(), win.y_px.to_numpy()
     summary = {"start_s": round(start, 2), "end_s": round(end, 2), **summary}

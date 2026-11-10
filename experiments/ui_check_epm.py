@@ -45,7 +45,7 @@ try:
 
         check("test selector shows the plus maze", page.input_value("#test") == "epm")
         check("maze settings shown, open-field settings hidden",
-              page.is_visible("#epm-settings") and not page.is_visible("#of-settings"))
+              page.is_visible("#arm_span_cm") and not page.is_visible("#width_cm"))
         n12 = page.evaluate("() => handles().length")
         check("12-corner mode: 12 handles", n12 == 12, str(n12))
         check("notice names the maze points", "Maze points" in page.inner_text("#notice"), page.inner_text("#notice")[:90])
@@ -60,7 +60,7 @@ try:
         page.screenshot(path=f"{OUT}/epm_02_results.png", full_page=True)
         base_open = open_time(page)
 
-        page.click("button[data-tab=setup]")
+        page.click("button[data-tab=protocol]")
         page.check("input[name=maze_mode][value=tips]")
         page.wait_for_timeout(1500)
         n4 = page.evaluate("() => handles().length")
@@ -70,7 +70,7 @@ try:
 
         # widen the arms: zones change, results recalculate
         page.click("button[data-tab=results]")
-        page.click("button[data-tab=setup]")
+        page.click("button[data-tab=protocol]")
         before = page.evaluate("() => JSON.stringify(geom.zones.open)")
         page.fill("#arm_width_cm", "8")
         page.dispatch_event("#arm_width_cm", "change")
@@ -81,7 +81,7 @@ try:
                                " return r[1].children[h.indexOf('Open arms')].innerText !== b; }", arg=base_open, timeout=20000)
         check("changing arm width recalculates open-arm time", open_time(page) != base_open,
               f"{base_open} s -> {open_time(page)} s")
-        page.click("button[data-tab=setup]")
+        page.click("button[data-tab=protocol]")
         page.screenshot(path=f"{OUT}/epm_04_wide_arms.png")
 
         # drag tip C1 up by 20 px
@@ -101,11 +101,11 @@ try:
         check("PDF report downloads", os.path.getsize(path) > 10000, f"{os.path.getsize(path)} bytes")
 
         # back to the open field video: the open-field form returns
-        page.click("button[data-tab=setup]")
+        page.click("button[data-tab=protocol]")
         page.select_option("#video", "data/ysmu/cntrol60_cage22_an1_OF1.mp4")
         wait_results(page)
         check("switching to an open-field video restores the open-field form",
-              page.input_value("#test") == "open_field" and page.is_visible("#of-settings"))
+              page.input_value("#test") == "open_field" and page.is_visible("#width_cm"))
         check("no JavaScript errors", not errors, "; ".join(errors[:3]))
         browser.close()
 finally:

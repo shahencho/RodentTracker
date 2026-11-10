@@ -56,3 +56,50 @@ td:not(:first-child), th:not(:first-child) { text-align: right; font-variant-num
 .login input:not([type]), .login input[type=password] { flex: 1; min-width: 0; }
 .login .row > label:first-child { min-width: 72px; }
 .login button { margin-top: 8px; width: 100%; }
+
+/* ANY-maze style layout: header nav, protocol groups, planned-feature placeholders (Phase A) */
+header { flex-wrap: wrap; }
+header nav { flex-wrap: wrap; }
+.nav-sep { width: 1px; background: var(--line); margin: 0 6px; }
+.show-planned { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.panel .group { margin: 18px -12px 4px; padding: 6px 12px 0; border-top: 1px solid var(--line); font-size: 12px;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+.panel .group:first-of-type { margin-top: 8px; }
+.panel h3 { text-transform: none; letter-spacing: 0; font-size: 13px; color: #344054; margin: 10px 0 4px; }
+.planned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; padding: 4px 8px;
+  border: 1px dashed #c4cad4; border-radius: 6px; background: #fafbfc; color: var(--muted); font-size: 12px;
+  cursor: help; }
+.planned .name { flex: 1; min-width: 0; }
+.planned .what { display: none; flex-basis: 100%; color: #475467; }
+.planned.open .what { display: block; }
+.badge { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 11px; line-height: 17px;
+  font-weight: 600; white-space: nowrap; color: #fff; background: #98a2b3; }
+.badge.B { background: #1f6fd1; }
+.badge.C { background: #7a4cc2; }
+.badge.D { background: #0f8a7e; }
+.badge.later { background: #667085; }
+.badge.out { background: #fff; color: #667085; border: 1px solid #c4cad4; }
+.planned-list.wide { max-width: 760px; margin: 8px 0 12px; }
+.planned-list.inline { display: flex; flex-wrap: wrap; gap: 6px; }
+.planned-list.inline .planned { margin: 0; }
+.group-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.planned-notice { max-width: 760px; }
+body.hide-planned .planned, body.hide-planned .planned-option, body.hide-planned .planned-notice,
+body.hide-planned .group-strip, body.hide-planned .preview, body.hide-planned [data-planned-slot="experiment"],
+body.hide-planned [data-planned-slot="data"], body.hide-planned .planned-tab, body.hide-planned .planned-ctl { display: none !important; }
+.preview { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.2fr); gap: 24px; max-width: 900px;
+  opacity: .55; pointer-events: none; user-select: none; }
+.preview input, .preview textarea { width: 100%; font: inherit; }
+#tab-data .preview { display: block; }
+#tab-experiment.active, #tab-tests.active, #tab-data.active, #tab-roadmap.active { display: block; }
+#tab-experiment.active > .planned-notice ~ .preview { margin-top: 8px; }
+table.clickable tr:not(:first-child) { cursor: pointer; }
+table.clickable tr:not(:first-child):hover { background: #eef4fd; }
+table.clickable td:not(:first-child), table.clickable th:not(:first-child) { text-align: left; }
+.ok { color: #2e9d4f; font-weight: 600; }
+#roadmap h3 { margin: 18px 0 6px; font-size: 14px; }
+#roadmap td, #roadmap th { text-align: left; vertical-align: top; }
+#roadmap td:first-child { white-space: nowrap; font-weight: 600; }
+#roadmap td:nth-child(2) { white-space: nowrap; color: var(--muted); }
+#roadmap, #tab-roadmap > p { max-width: 1000px; }
+.preview td, .preview th { text-align: left !important; }
